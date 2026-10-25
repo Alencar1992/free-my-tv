@@ -24,39 +24,20 @@ import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 
 /**
- * Optional crypto prices (Binance, every 5 min) and weather/sunrise/sunset (Open-Meteo, every 30 min), cached
+ * Public channel data and weather/sunrise/sunset (Open-Meteo, every 30 min), cached
  * so the screen opens with numbers. Only fetched while the home screen or the screensaver is visible (the screen asks).
- * Neither source needs a key. Location and currency come from config.properties.
+ * The channel service keeps its Google key on the server. Location comes from config.properties.
  */
 final class HomeData {
-    static final String[] COINS = {"BTC", "ETH", "SOL", "USDT"};
-    static final String[] COIN_NAMES = {"Bitcoin", "Ethereum", "Solana", "Dollar"};
     private static final String CURRENCY = Config.CURRENCY.trim().toUpperCase(Locale.ROOT);
-    /** Binance quotes dollars as USDT. */
-    private static final String QUOTE = CURRENCY.equals("USD") ? "USDT" : CURRENCY;
     private static final String WEATHER_URL = "https://api.open-meteo.com/v1/forecast?latitude=" + Config.LATITUDE
             + "&longitude=" + Config.LONGITUDE
             + "&current=temperature_2m,weather_code,is_day&daily=temperature_2m_max,temperature_2m_min,sunrise,sunset"
             + "&hourly=temperature_2m,weather_code,is_day&timezone=auto&forecast_days=2";
-    private static final long PRICES_EVERY = 5 * 60_000L, WEATHER_EVERY = 30 * 60_000L;
+    private static final long WEATHER_EVERY = 30 * 60_000L;
     private static final Locale PT = new Locale("pt", "BR");
 
     interface Listener { void onData(); }
-
-    /** BTC, ETH and SOL; in Brazilian reais also the dollar (USDT/BRL), which Binance doesn't list for most currencies. */
-    static int coinCount() {
-        return CURRENCY.equals("BRL") ? COINS.length : 3;
-    }
-
-    static String coinName(int i) {
-        return i == 3 ? Ui.tr("Dólar", "Dollar") : COIN_NAMES[i];
-    }
-
-    private static String pricesUrl() {
-        StringBuilder symbols = new StringBuilder();
-        for (int i = 0; i < coinCount(); i++) symbols.append(i == 0 ? "" : ",").append("%22").append(COINS[i]).append(QUOTE).append("%22");
-        return "https://api.binance.com/api/v3/ticker/24hr?type=MINI&symbols=%5B" + symbols + "%5D";
-    }
 
     static final class Weather {
         double temp = Double.NaN, max = Double.NaN, min = Double.NaN;
@@ -77,26 +58,21 @@ final class HomeData {
         return instance;
     }
 
-    final double[] prices = {Double.NaN, Double.NaN, Double.NaN, Double.NaN};
-    /** 24 h change (%), in the same order. */
-    final double[] changes = {Double.NaN, Double.NaN, Double.NaN, Double.NaN};
-    volatile long pricesAt, weatherAt;
+    volatile long weatherAt;
     volatile Weather weather = new Weather();
 
     private final SharedPreferences cache;
+    private final ChannelSource channelSource;
     private final ExecutorService io = Executors.newSingleThreadExecutor();
     private final Handler main = new Handler(Looper.getMainLooper());
     private final List<Listener> listeners = new ArrayList<>();
-    private volatile boolean fetchingPrices, fetchingWeather;
+    private volatile boolean fetchingWeather;
 
     private HomeData(Context c) {
         cache = c.getSharedPreferences("homedata", Context.MODE_PRIVATE);
+        channelSource = ChannelSource.get(c);
+        channelSource.addListener(this::notifyListeners);
         try {
-            if (Config.SHOW_CRYPTO) {
-                String p = cache.getString("prices", null);
-                if (p != null) parsePrices(p);
-                pricesAt = cache.getLong("pricesAt", 0);
-            }
             String w = cache.getString("weather", null);
             if (w != null) weather = parseWeather(w);
             weatherAt = cache.getLong("weatherAt", 0);
@@ -105,27 +81,13 @@ final class HomeData {
 
     void addListener(Listener l) { if (!listeners.contains(l)) listeners.add(l); }
     void removeListener(Listener l) { listeners.remove(l); }
+    ChannelFeed channel() { return channelSource.feed(); }
 
     /** Fetches whatever is stale. The screen calls this when it appears and every minute while it's visible. */
     void refreshIfStale() {
         long now = System.currentTimeMillis();
+        channelSource.refreshIfStale();
         // A negative age (the TV's clock went back) counts as stale: otherwise the data would freeze.
-        if (Config.SHOW_CRYPTO && !fetchingPrices && (now - pricesAt > PRICES_EVERY || now < pricesAt)) {
-            fetchingPrices = true;
-            io.execute(() -> {
-                try {
-                    String body = get(pricesUrl());
-                    parsePrices(body);
-                    pricesAt = System.currentTimeMillis();
-                    cache.edit().putString("prices", body).putLong("pricesAt", pricesAt).apply();
-                    notifyListeners();
-                } catch (Exception e) {
-                    AppLog.w("prices: " + e.getMessage());
-                } finally {
-                    fetchingPrices = false;
-                }
-            });
-        }
         if (!fetchingWeather && (now - weatherAt > WEATHER_EVERY || now < weatherAt)) {
             fetchingWeather = true;
             io.execute(() -> {
@@ -146,25 +108,6 @@ final class HomeData {
 
     private void notifyListeners() {
         main.post(() -> { for (Listener l : new ArrayList<>(listeners)) l.onData(); });
-    }
-
-    private void parsePrices(String body) throws Exception {
-        JSONArray list = new JSONArray(body);
-        String quote = QUOTE;
-        int found = 0;
-        for (int i = 0; i < list.length(); i++) {
-            JSONObject o = list.getJSONObject(i);
-            String symbol = o.getString("symbol");
-            for (int k = 0; k < COINS.length; k++) {
-                if (!symbol.equals(COINS[k] + quote)) continue;
-                found++;
-                double last = Double.parseDouble(o.optString("lastPrice", o.optString("price", "NaN")));
-                double open = Double.parseDouble(o.optString("openPrice", "NaN"));
-                prices[k] = last;
-                changes[k] = open > 0 ? (last - open) / open * 100 : Double.NaN;
-            }
-        }
-        if (found == 0) pricesAt = 0;   // cached in another currency (config changed): fetch again
     }
 
     private static Weather parseWeather(String body) throws Exception {

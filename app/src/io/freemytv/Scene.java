@@ -6,6 +6,8 @@ import android.graphics.Canvas;
 import android.graphics.Color;
 import android.graphics.LinearGradient;
 import android.graphics.Paint;
+import android.graphics.Path;
+import android.graphics.Matrix;
 import android.graphics.RecordingCanvas;
 import android.graphics.RectF;
 import android.graphics.RenderNode;
@@ -30,6 +32,15 @@ final class Scene {
     private final Paint flatFill = new Paint(Paint.ANTI_ALIAS_FLAG);
     private final Paint flatRim = new Paint(Paint.ANTI_ALIAS_FLAG);
     private final Paint fallback = new Paint();
+    private final Paint flatTexture = new Paint(Paint.FILTER_BITMAP_FLAG);
+    private final Paint flatSheen = new Paint(Paint.ANTI_ALIAS_FLAG);
+    private final Path flatClip = new Path();
+    private final RectF flatSource = new RectF();
+    private final Matrix flatMatrix = new Matrix();
+    private final LinearGradient sheen = new LinearGradient(0, 0, 0, 1,
+            new int[] {0x33FFFFFF, 0x04FFFFFF, 0x1AFFFFFF}, new float[] {0, .5f, 1}, Shader.TileMode.CLAMP);
+    private float flatMix, offsetX, offsetY;
+    private boolean flatPair;
     private final RenderNode auroraNode = new RenderNode("aurora");
     // The layer is drawn at a quarter size and scaled up: filtered, its soft shapes stay soft instead of stepping.
     private final Paint layerPaint = new Paint(Paint.FILTER_BITMAP_FLAG);
@@ -124,6 +135,8 @@ final class Scene {
         imageGlass = true;
         glassA = fill(glassA, from);
         if (to != null) glassB = fill(glassB, to);
+        flatPair = to != null;
+        flatMix = 0;
         if (liquid == null) return;
         glassShaderA = linear(glassA);
         liquid.setInputShader("imageA", glassShaderA);
@@ -133,6 +146,7 @@ final class Scene {
     }
 
     void setGlassMix(float t) {
+        flatMix = Math.max(0, Math.min(1, t));
         if (liquid != null) liquid.setFloatUniform("mixB", Math.max(0, Math.min(1, t)));
     }
 
@@ -163,7 +177,7 @@ final class Scene {
                 float specular, float alpha) {
         if (alpha <= 0.004f) return;
         if (liquid == null) {
-            glass(c, r, radius, tint, Math.max(0.5f, tintAlpha), 0, 0, lift, 1, alpha);
+            glass(c, r, radius, tint, tintAlpha, 0, 0, lift, 1, alpha);
             return;
         }
         liquid.setFloatUniform("center", r.centerX(), r.centerY());
@@ -206,6 +220,8 @@ final class Scene {
 
     /** Offset (px) of the layer that will draw glass, if it was moved on screen without being redrawn. */
     void setOffset(float x, float y) {
+        offsetX = x;
+        offsetY = y;
         if (glass != null) glass.setFloatUniform("offset", x, y);
         if (liquid != null) liquid.setFloatUniform("offset", x, y);
     }
@@ -249,10 +265,31 @@ final class Scene {
     void glass(Canvas c, RectF r, float radius, int tint, float tintAlpha, int glow, float glowAlpha, float lift, float body, float alpha) {
         if (alpha <= 0.004f) return;
         if (glass == null) {
+            flatClip.reset();
+            flatClip.addRoundRect(r, radius, radius, Path.Direction.CW);
+            int save = c.save();
+            c.clipPath(flatClip);
+            if (body > 0 && imageGlass && glassA != null) {
+                flatSource.set(-offsetX, -offsetY, w - offsetX, h - offsetY);
+                flatTexture.setAlpha(Math.round(255 * .20f * alpha));
+                c.drawBitmap(glassA, null, flatSource, flatTexture);
+                if (flatPair && glassB != null) {
+                    flatTexture.setAlpha(Math.round(255 * .20f * alpha * flatMix));
+                    c.drawBitmap(glassB, null, flatSource, flatTexture);
+                }
+            }
             if (body > 0) {
-                flatFill.setColor(Ui.alpha(tint | 0xFF000000, Math.max(0.35f, tintAlpha)));
+                flatFill.setColor(Ui.alpha(tint | 0xFF000000, Math.max(0, Math.min(1, tintAlpha)) * alpha));
                 c.drawRoundRect(r, radius, radius, flatFill);
             }
+            flatMatrix.setScale(1, r.height());
+            flatMatrix.postTranslate(0, r.top);
+            sheen.setLocalMatrix(flatMatrix);
+            flatSheen.setShader(sheen);
+            flatSheen.setAlpha(Math.round(255 * alpha));
+            c.drawRoundRect(r, radius, radius, flatSheen);
+            c.restoreToCount(save);
+            flatRim.setAlpha(Math.round(88 * alpha));
             c.drawRoundRect(r, radius, radius, flatRim);
             return;
         }

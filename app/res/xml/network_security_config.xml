@@ -1,0 +1,6 @@
+<?xml version="1.0" encoding="utf-8"?>
+<network-security-config>
+    <base-config cleartextTrafficPermitted="false" />
+    <!-- For an optional HTTP LAN feed, allow only its exact host here.
+         See docs/feed-pessoal.md. Never enable cleartext traffic globally. -->
+</network-security-config>

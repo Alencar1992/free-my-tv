@@ -1,92 +1,39 @@
-# Free My TV: notes for Claude
+# Free My TV — instruções para agentes
 
-A home screen for Google TV and Android TV that replaces the stock one, plus a settings app that switches between
-Free My TV and the TV's original home screen. A plain Android app in Java, built without Gradle by `build.sh`.
-The website (freemytv.io) is in `docs/`: static HTML, CSS and JS, no build step. A push to `main` that changes it
-publishes it to GitHub Pages (`.github/workflows/pages.yml`). `docs/index.html` (English) and `docs/pt/index.html`
-(Brazilian Portuguese) are the same page in two languages, so change both; visitors from Brazil land on the
-Portuguese one by themselves, and the PT/EN switch in the menu is remembered.
+Este é o fork ViktorKav de `simbasjungles/free-my-tv`. Java sem Gradle; interface desenhada em Canvas; Android 12+. O código original de troca de home e recuperação foi preservado. O README descreve o produto público e os requisitos atuais.
 
-The person you're helping may not be technical. Keep it short and friendly, say what you're about to do on their TV
-before you do it, and let them do the taps on the TV.
+## Leia conforme a tarefa
 
-## Installing it for someone
+- **Instalar, atualizar ou voltar à home original:** [README.md](README.md), incluindo assinatura e particularidades do aparelho.
+- **Alterar skins, navegação, cards ou descanso:** [docs/customizacoes-viktorkav.md](docs/customizacoes-viktorkav.md).
+- **Configurar ou modificar coleta, OAuth, cache ou transporte do feed:** [docs/feed-pessoal.md](docs/feed-pessoal.md).
 
-1. **Ask** for the TV's IP address and their city, if they didn't say.
-2. **Tools:** a JDK 17+, the Android SDK command-line tools (build-tools 34+, platform android-34) and adb. Check
-   what's already there (`java -version`, `$ANDROID_HOME`, `adb version`) and install only what's missing.
-   - macOS: `brew install --cask temurin android-commandlinetools android-platform-tools`, then
-     `sdkmanager "build-tools;34.0.0" "platforms;android-34"`.
-   - Linux: OpenJDK 17, Android's command-line tools and adb from the package manager, then the same `sdkmanager` line.
-   - Windows: WSL, then as on Linux.
-3. **Settings:** run `./build.sh` once; it creates `config.properties`. Fill in `latitude` and `longitude` (decimal
-   degrees) and `city` for their city, `tmdb_region` (two-letter country), `show_crypto`, `currency` and `temperature` to match.
-4. **The TMDB key is theirs and secret.** Ask them to create one (free: themoviedb.org → Settings → API) and paste it
-   after `tmdb_key=` in `config.properties` themselves. Don't ask for it in the chat, never print it, never commit
-   it. If they paste it in the chat anyway, put it only in `config.properties`.
-   Without a key everything works except the picks and the screensaver photos.
-5. **Build:** `./build.sh` → `FreeMyTV.apk`. Keep `freemytv.keystore`: updates must be signed with the same key.
-6. **Install:** `adb connect <IP>:5555`. The TV asks *Allow USB debugging?*: tell them to accept and tick *Always
-   allow*. Then `adb install -r FreeMyTV.apk`. On TCL, also `adb shell appops set io.freemytv AUTO_START allow`:
-   TCL's `TclAppBoot` blocks background jobs by default, so the switch (and the watchdog) never run. The log shows
-   `forbid bind service ... ModeJob`.
-7. **Tell them what the switch does** before they make it: the home screen and screensaver change, a short list of
-   promo apps is turned off (never uninstalled), and *Original* brings it all back. On some TVs the remote's
-   shortcut buttons belong to the stock home screen (TCL: Netflix, YouTube, Prime), so they rest while Free My TV
-   is on.
-8. **They switch on the TV:** *Free My TV* → *Home Screen* → *Free My TV*. The app uses the TV's own ADB on
-   127.0.0.1 with its own key, so the TV asks once more to allow debugging. Don't switch modes from the computer.
-   If the TV's Wi-Fi was saved during its first setup, the switch stops before changing anything and asks them to
-   forget the network and connect again in Settings (Network & Internet); then the switch goes through.
-9. **Check:** `adb logcat -s FreeMyTV` shows what the switch did.
+## Fluxo de alteração
 
-## Adapting it to another TV
+1. Confira o estado do Git e a versão instalada antes de mudar arquivos. Preserve trabalho e configurações locais do usuário.
+2. Edite fontes em `app/src/`, `app/res/`, `app/assets/` ou `tools/`. `out/gen/io/freemytv/Config.java` é gerado por `build.sh`; a fonte de configuração é `config.properties`.
+3. Mantenha os textos bilíngues com `Ui.tr("pt", "en")`. Na interface, mantenha I/O e processamento pesado fora da thread principal e evite alocações durante `onDraw`.
+4. Execute os testes pertinentes e `./build.sh`. Para uma alteração que cruza app e servidor, execute ambos os grupos abaixo. A compilação deve terminar com `Built FreeMyTV.apk`.
+5. Relate o que foi verificado. Testes unitários e build não comprovam funcionamento físico na TV; identifique separadamente uma verificação feita no aparelho.
 
-Read first, change after. Read-only commands that tell you what the TV has:
-
-```bash
-adb shell getprop ro.product.brand; adb shell getprop ro.product.model; adb shell getprop ro.build.version.release
-adb shell cmd package query-activities --brief -a android.intent.action.MAIN -c android.intent.category.HOME
-adb shell cmd role get-role-holders android.app.role.HOME
-adb shell settings get secure screensaver_components; adb shell settings get secure screensaver_default_component
-adb shell pm list packages -s     # system apps (-3 for the ones they installed)
+```sh
+python3 -m unittest discover -s tests -p 'test_*.py' -q
+bash tests/run-java-tests.sh
+./build.sh
 ```
 
-Then, in the code:
+## TV e recuperação
 
-- `HomeMode.DEBLOAT`: add the brand's promo, demo, store-mode and telemetry apps, one comment per line. Only those.
-- `HomeMode.PROTECTED`: add the brand's system pieces: picture, sound, inputs and HDMI-CEC, the tuner and live TV,
-  remote and Bluetooth pairing, setup, updates, system UI. When in doubt, protect it.
-- `HomeApps.SHELF`, `LIVE_TV_APPS` and `HIDDEN`: the shelf apps, the brand's live TV app, apps to hide from All Apps.
-- Build, install, have them switch on the TV, read `adb logcat -s FreeMyTV`, then have them switch back to
-  *Original* once and confirm everything returned.
+- Faça inventário de marca, sistema, versão, launcher e recursos do controle antes de adaptar a troca. A marca sozinha não determina compatibilidade.
+- Explique as alterações e deixe a pessoa confirmar **Free My TV** ou **Original** no controle. Instalação/configuração não autoriza alterar contas, imagem, som ou rede do aparelho.
+- Preserve `HomeMode.PROTECTED`, a proteção de pacotes que salvaram Wi-Fi, o registro anterior e o watchdog. A operação permitida para a limpeza é desativar pacotes selecionados; nunca remover APKs de sistema ou limpar seus dados.
+- Uma atualização precisa da mesma assinatura. Se houver conflito, restaurar Original e conferir a volta precede qualquer desinstalação.
+- Depois de uma instalação autorizada, confira Início, abrir/voltar dos apps, entradas, volume e atalhos. Faça a verificação de Original pelo controle com a pessoa. A recuperação depende de ADB autorizado e execução em segundo plano.
 
-TVs that don't run Google TV or Android TV (Samsung, LG and others): the way is a Google TV streamer on HDMI
-(Chromecast with Google TV, Google TV Streamer, onn 4K, NVIDIA Shield). Set Free My TV up on the streamer.
+## Configuração e publicação
 
-**Uninstalled while in Free My TV mode?** The apps it turned off stay off. Bring them back with
-`adb shell pm enable <package>` (the `DEBLOAT` list and the stock home screen), then
-`adb shell cmd package set-home-activity <stock home activity>` and
-`adb shell settings put secure screensaver_components <stock screensaver>`.
-
-## The code
-
-- Java 8 language level, minSdk 31 (Android 12), targetSdk 33. No Gradle, no libraries: only the Android SDK.
-- The home screen is drawn by hand on one Canvas (`HomeView`); the glass and the sky are AGSL shaders (`Shaders`,
-  Android 13+, with a fallback for 12). Keep it at 60 fps: no allocations in `onDraw`, no work on the UI thread.
-- `HomeMode` runs every switch as a background job (`ModeJob`) in the main process; the UI is in the `:home`
-  process. `Watchdog` goes back to the stock home screen after 3 crashes in 5 minutes.
-- On-screen text is bilingual, `Ui.tr("pt", "en")`: add both. Comments in English, short, only where the why
-  isn't obvious.
-- Settings come from `config.properties` through the generated `out/gen/io/freemytv/Config.java` (never edit that).
-- After any change, `./build.sh` must end with `Built FreeMyTV.apk`.
-
-## Always
-
-- Never turn off an app that saved a Wi-Fi network: Android deletes its networks and Original can't bring them
-  back (`wifiOwners` in `HomeMode`).
-- Never commit `config.properties`, `*.keystore` or any key.
-- Never uninstall or clear the data of system apps; only `pm disable-user --user 0`, through `HomeMode`, so
-  *Original* can bring it back.
-- Don't change the TV's picture, sound, network or account settings.
-- Keep the way back working: the *Original* mode and the watchdog.
+- O build público parte de `config.example.properties`, com feed vazio e métricas ocultas. Cidade e idioma usam os defaults públicos. Credenciais Google pertencem ao serviço opcional, nunca ao APK.
+- `config.properties`, keystores, `.env`, credenciais OAuth, caches e dumps pessoais ficam fora do Git. Trate também `out/` e APKs pessoais como dados potencialmente sensíveis; configurações compiladas podem ser extraídas.
+- HTTP requer uma exceção para o host exato em `app/res/xml/network_security_config.xml`; mantenha o bloqueio geral. HTTPS usa certificado válido. O serviço deve ficar na rede privada, porque o endpoint não autentica clientes.
+- O canal das métricas é público e fixo no código. A identidade autorizada por OAuth fornece as inscrições, não muda esse canal.
+- Preserve a licença MIT original, atribuições de assets e licenças das fontes. Mantenha créditos ao upstream ao publicar modificações.

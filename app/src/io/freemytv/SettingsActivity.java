@@ -27,8 +27,7 @@ import org.json.JSONObject;
 import java.util.List;
 
 /**
- * Free My TV's settings (the app's icon, "All Apps", or the gear on the home screen), in the style of Apple TV's
- * settings: the big symbol and title on the left, the list on the right with the focused row in white. "Home screen"
+ * TV settings with a persisted appearance selector and skin-owned materials/fonts. "Home screen"
  * opens the Free My TV / Original choice (with a check on the current one); the switch runs in the main process
  * (HomeMode) and this screen only asks for it and follows the state file.
  */
@@ -102,17 +101,23 @@ public class SettingsActivity extends Activity {
     }
 
     static final class SettingsView extends View implements Choreographer.FrameCallback {
-        private static final int MAIN = 0, HOME_CHOICE = 1;
+        private static final int MAIN = 0, HOME_CHOICE = 1, SKIN_CHOICE = 2;
         private static final float LIST_X = 1000, LIST_R = 1824, LIST_TOP = 186, ROW_H = 74, ROW_GAP = 8, CHOICE_H = 104;
-        private static final int AMBER = 0xFFFFC266, INK = 0xFF1C1C1E;
+        private static final int AMBER = 0xFFFFC266;
+        private Skin skin;
+        private Ui.Fonts fonts;
+        private final Skin.Palette theme = new Skin.Palette();
+        private final Scene scene = new Scene();
+        private final HomeData data;
+        private boolean night;
 
         private final SettingsActivity activity;
-        private final Scene scene = new Scene();
         private final Handler handler = new Handler(Looper.getMainLooper());
         private final Spring[] pop = new Spring[5];
         private final RectF tmp = new RectF(), rowRect = new RectF(), focusBox = new RectF();
         private JSONObject state = new JSONObject(), recs = new JSONObject();
-        private boolean hasKey;
+        private boolean channelConfigured;
+        private String channelLine = "", channelTimestamp = "", subscriptionsLine = "", subscriptionsTimestamp = "";
         private int screen = MAIN, focus;
         private boolean running, okDown, backDown, wasBusy;
         private final Spoken spoken;
@@ -126,8 +131,10 @@ public class SettingsActivity extends Activity {
             @Override public void run() {
                 if (!running) return;
                 state = HomeMode.state(getContext());
-                hasKey = Recs.hasKey(getContext());
+                channelConfigured = Recs.hasKey(getContext());
                 recs = Recs.status(getContext());
+                updateChannelStatus();
+                refreshAppearance();
                 boolean nowBusy = !state.optString("busy").isEmpty();
                 if (nowBusy) pendingAt = 0;
                 // A switch just ended: TalkBack reads how it went (the newest notice).
@@ -145,11 +152,9 @@ public class SettingsActivity extends Activity {
         SettingsView(SettingsActivity a) {
             super(a);
             activity = a;
+            data = HomeData.get(a);
+            refreshAppearance();
             for (int i = 0; i < pop.length; i++) pop[i] = new Spring(0.28f, 0.85f, 0);
-            HomeData.Weather wx = HomeData.get(a).weather;
-            Shaders.sky(scene.palette, System.currentTimeMillis(), wx.sunrise, wx.sunset);
-            scene.setMotion(0.5f, 0.2f);
-            scene.applyPalette();
             setFocusable(true);
             setContentDescription("Free My TV");
             // TalkBack: one item per row, id = row + 1.
@@ -183,7 +188,12 @@ public class SettingsActivity extends Activity {
                             : freeActive() ? "Free My TV" : Ui.tr("Original", "Original");
                     return Ui.tr("Início, ", "Home Screen, ") + value;
                 }
-                return row == 1 ? Ui.tr("Tela de Descanso, ver agora", "Screensaver, preview") : Ui.tr("Ajustes da TV", "TV Settings");
+                if (row == 1) return Ui.tr("Aparência, ", "Appearance, ") + skinName(skin);
+                return row == 2 ? Ui.tr("Tela de Descanso, ver agora", "Screensaver, preview") : Ui.tr("Ajustes da TV", "TV Settings");
+            }
+            if (screen == SKIN_CHOICE) {
+                Skin option = Skin.values()[row];
+                return skinName(option) + (option == skin ? Ui.tr(". Em uso", ". In use") : "");
             }
             String name = row == 0 ? "Free My TV, " + Ui.tr("sem anúncios, com a tela de descanso nova", "no ads, with the new screensaver")
                     : "Original, " + Ui.tr("o Início de fábrica da TV", "the TV's factory home screen");
@@ -199,6 +209,7 @@ public class SettingsActivity extends Activity {
         }
 
         void resume() {
+            refreshAppearance();
             if (running) return;
             running = true;
             startedAt = SystemClock.uptimeMillis();
@@ -227,29 +238,29 @@ public class SettingsActivity extends Activity {
             h = height;
             k = w / 1920f;
             scene.setSize(w, h);
-            title = Ui.text(Ui.displaySemibold, 50 * k, 0xFFFFFFFF);
+            title = Ui.text(fonts.displaySemibold, 50 * k, theme.TEXT);
             title.setTextAlign(Paint.Align.CENTER);
-            subtitle = Ui.text(Ui.regular, 26 * k, 0x99FFFFFF);
+            subtitle = Ui.text(fonts.regular, 26 * k, theme.SECONDARY);
             subtitle.setTextAlign(Paint.Align.CENTER);
-            version = Ui.text(Ui.regular, 22 * k, 0x66FFFFFF);
+            version = Ui.text(fonts.mono, 20 * k, theme.MUTED);
             version.setTextAlign(Paint.Align.CENTER);
-            rowLabel = Ui.text(Ui.medium, 30 * k, 0xF2FFFFFF);
-            rowValue = Ui.text(Ui.regular, 28 * k, 0x8CFFFFFF);
+            rowLabel = Ui.text(fonts.medium, 30 * k, theme.TEXT);
+            rowValue = Ui.text(fonts.regular, 28 * k, theme.SECONDARY);
             rowValue.setTextAlign(Paint.Align.RIGHT);
-            rowSub = Ui.text(Ui.regular, 23 * k, 0x8CFFFFFF);
-            header = Ui.text(Ui.semibold, 21 * k, 0x73FFFFFF);
+            rowSub = Ui.text(fonts.regular, 23 * k, theme.SECONDARY);
+            header = Ui.text(fonts.mono, 20 * k, theme.ACCENT);
             header.setLetterSpacing(0.06f);
-            cellLabel = Ui.text(Ui.regular, 25 * k, 0xD9FFFFFF);
-            cellValue = Ui.numbers(Ui.regular, 25 * k, 0xD9FFFFFF);
+            cellLabel = Ui.text(fonts.regular, 25 * k, theme.SECONDARY);
+            cellValue = fonts.numbers(fonts.regular, 25 * k, theme.SECONDARY);
             cellValue.setTextAlign(Paint.Align.RIGHT);
-            warn = Ui.text(Ui.regular, 23 * k, AMBER);
-            notice = new TextPaint(Ui.text(Ui.regular, 23 * k, 0xB3FFFFFF));
+            warn = Ui.text(fonts.regular, 23 * k, AMBER);
+            notice = new TextPaint(Ui.text(fonts.regular, 23 * k, theme.MUTED));
             spinner = new Paint(Paint.ANTI_ALIAS_FLAG);
             spinner.setStyle(Paint.Style.STROKE);
             spinner.setStrokeCap(Paint.Cap.ROUND);
             spinner.setStrokeWidth(3.5f * k);
             white = new Paint(Paint.ANTI_ALIAS_FLAG);
-            white.setColor(0xFFF5F5F7);
+            white.setColor(theme.FOCUS);
             shadow = new Paint(Paint.ANTI_ALIAS_FLAG);
             shadow.setMaskFilter(new BlurMaskFilter(22 * k, BlurMaskFilter.Blur.NORMAL));
         }
@@ -263,7 +274,7 @@ public class SettingsActivity extends Activity {
         }
 
         private int rowCount() {
-            return screen == MAIN ? 3 : 2;
+            return screen == MAIN ? 4 : screen == SKIN_CHOICE ? Skin.values().length : 2;
         }
 
         @Override protected void onDraw(Canvas c) {
@@ -277,56 +288,61 @@ public class SettingsActivity extends Activity {
             }
             long up = SystemClock.uptimeMillis();
             float seconds = (up - startedAt) / 1000f;
-            if (up - lastSky >= 100) {
-                lastSky = up;
+            lastSky = up;
+            c.drawColor(theme.BACKGROUND);
+            if (skin.glass) {
                 scene.advance(seconds);
+                scene.drawBackground(c);
+                white.setColor(Ui.alpha(theme.BACKGROUND, .65f));
+                c.drawRect(0, 0, w, h, white);
             }
-            scene.drawBackground(c);
+            white.setColor(theme.FOCUS);
 
             // On the left: big symbol, title, description.
             float cx = 500 * k;
-            Symbols.draw(getContext(), c, "sparkles", cx, 400 * k, 150 * k, 0xEBFFFFFF);
-            c.drawText("Free My TV", cx, 612 * k, title);
+            if (!skin.glass) Ui.brand(c, cx - 65 * k, 330 * k, 130 * k);
+            else Symbols.draw(getContext(), c, "tv", cx, 400 * k, 130 * k, theme.TEXT);
+            c.drawText("ViktorKav", cx, 612 * k, title);
             c.drawText(Ui.tr("Início e tela de descanso da TV", "Your TV's home screen and screensaver"), cx, 660 * k, subtitle);
             c.drawText(versionName(getContext()), cx, 704 * k, version);
 
-            if (screen == MAIN) drawMain(c, seconds); else drawChoice(c);
+            if (screen == MAIN) drawMain(c, seconds); else if (screen == SKIN_CHOICE) drawSkins(c); else drawChoice(c);
         }
 
         private void drawMain(Canvas c, float seconds) {
             boolean working = busy();
             String busyText = state.optString("busy");
             String mode = freeActive() ? "Free My TV" : Ui.tr("Original", "Original");
-            String[] labels = {Ui.tr("Início", "Home Screen"), Ui.tr("Tela de Descanso", "Screensaver"), Ui.tr("Ajustes da TV", "TV Settings")};
-            String[] values = {working ? "" : mode, Ui.tr("Ver agora", "Preview"), ""};
-            for (int i = 0; i < 3; i++) {
+            String[] labels = {Ui.tr("Início", "Home Screen"), Ui.tr("Aparência", "Appearance"), Ui.tr("Tela de Descanso", "Screensaver"), Ui.tr("Ajustes da TV", "TV Settings")};
+            String[] values = {working ? "" : mode, skinName(skin), Ui.tr("Ver agora", "Preview"), ""};
+            for (int i = 0; i < 4; i++) {
                 float y = (LIST_TOP + i * (ROW_H + ROW_GAP)) * k;
                 rowRect.set(LIST_X * k, y, LIST_R * k, y + ROW_H * k);
                 float f = drawRowBackground(c, i);
-                int ink = blend(0xF2FFFFFF, INK, f);
+                int ink = blend(theme.TEXT, theme.ON_FOCUS, f);
                 rowLabel.setColor(ink);
                 float base = rowRect.centerY() + Ui.halfCap(rowLabel);
                 c.drawText(labels[i], rowRect.left + 30 * k, base, rowLabel);
                 float right = rowRect.right - 30 * k;
-                if (i >= 2) {
+                if (i == 3) {
                     float cw = Symbols.width(getContext(), "chevron_right", 22 * k);
-                    Symbols.draw(getContext(), c, "chevron_right", right - cw / 2, rowRect.centerY(), 22 * k, blend(0x66FFFFFF, 0x991C1C1E, f));
+                    Symbols.draw(getContext(), c, "chevron_right", right - cw / 2, rowRect.centerY(), 22 * k, blend(theme.MUTED, theme.ON_FOCUS, f));
                 } else if (i == 0 && working) {
                     // Switching: the current step in place of the value, with the spinning arc.
                     String text = busyText.isEmpty() ? Ui.tr("Começando…", "Starting…") : busyText;
-                    rowValue.setColor(blend(0xB3FFFFFF, 0xB31C1C1E, f));
+                    rowValue.setColor(blend(theme.MUTED, theme.ON_FOCUS, f));
                     String shown = TextUtils.ellipsize(text, new TextPaint(rowValue), 470 * k, TextUtils.TruncateAt.END).toString();
                     c.drawText(shown, right, base, rowValue);
                     float sx = right - rowValue.measureText(shown) - 26 * k;
-                    spinner.setColor(blend(0xFFFFFFFF, INK, f));
+                    spinner.setColor(blend(theme.TEXT, theme.ON_FOCUS, f));
                     Ui.spinner(c, sx, rowRect.centerY(), 12 * k, seconds * 1.3f, spinner);
                 } else {
-                    rowValue.setColor(blend(0x8CFFFFFF, 0x8C1C1C1E, f));
+                    rowValue.setColor(blend(theme.SECONDARY, theme.ON_FOCUS, f));
                     c.drawText(values[i], right, base, rowValue);
                 }
             }
 
-            float y = (LIST_TOP + 3 * (ROW_H + ROW_GAP) + 46) * k;
+            float y = (LIST_TOP + 4 * (ROW_H + ROW_GAP) + 46) * k;
             String error = state.optString("error");
             if (working && (busyText.contains("Permitir") || busyText.contains("Allow"))) {
                 c.drawText(Ui.tr("Na TV: marque “Sempre permitir” e aperte OK.", "On the TV: tick “Always allow” and press OK."),
@@ -341,34 +357,61 @@ public class SettingsActivity extends Activity {
             drawNotices(c, y + 40 * k);
         }
 
-        /** Home screen picks: status, and the credit TMDB asks for. */
-        private float drawRecs(Canvas c, float y) {
-            float x = LIST_X * k + 30 * k;
-            c.drawText(Ui.tr("RECOMENDAÇÕES", "RECOMMENDATIONS"), x, y, header);
-            String line;
+        private void updateChannelStatus() {
             String error = recs.optString("error");
-            int count = recs.optInt("count");
-            if (!hasKey) line = Ui.tr("Sem chave do TMDB: veja o README (config.properties).", "No TMDB key: see the README (config.properties).");
-            else if (!error.isEmpty()) line = Ui.tr("Erro: ", "Error: ") + error + ".";
-            else if (count > 0) line = Ui.tr("Ligadas · " + count + " títulos nos apps da TV, 3 novos a cada hora.",
-                    "On · " + count + " titles from the TV's apps, 3 new ones every hour.");
-            else line = Ui.tr("Buscando os títulos…", "Fetching titles…");
-            c.drawText(TextUtils.ellipsize(line, notice, 790 * k, TextUtils.TruncateAt.END).toString(), x, y + 42 * k, notice);
-            version.setTextAlign(Paint.Align.LEFT);
-            c.drawText(Ui.tr("Usa a API do TMDB, sem endosso ou certificação do TMDB.",
-                    "This product uses the TMDB API but is not endorsed or certified by TMDB."), x, y + 78 * k, version);
-            version.setTextAlign(Paint.Align.CENTER);
-            return y + 78 * k;
+            long at = recs.optLong("at");
+            if (!channelConfigured) channelLine = Ui.tr("Métricas: fonte não configurada.", "Metrics: feed is not configured.");
+            else if (!error.isEmpty()) channelLine = Ui.tr("Métricas: ", "Metrics: ") + error + ".";
+            else if (at > 0) channelLine = Ui.tr("Métricas públicas do canal ViktorKav.", "Public metrics for the ViktorKav channel.");
+            else channelLine = Ui.tr("Métricas: aguardando o feed…", "Metrics: waiting for the feed…");
+            boolean stale = recs.optBoolean("stale", true) || at <= 0 || System.currentTimeMillis() < at
+                    || System.currentTimeMillis() - at >= 15 * 60_000L;
+            channelTimestamp = dataTimestamp(at, stale);
+
+            String status = recs.optString("recommendationsStatus", "loading");
+            int count = recs.optInt("recommendationsCount");
+            if (!channelConfigured) subscriptionsLine = Ui.tr("Inscrições: fonte não configurada.", "Subscriptions: feed is not configured.");
+            else if (status.equals("authorization_required")) subscriptionsLine = Ui.tr("Inscrições: autorize o YouTube no servidor.", "Subscriptions: authorize YouTube on the server.");
+            else if (status.equals("loading")) subscriptionsLine = Ui.tr("Inscrições: carregando vídeos…", "Subscriptions: loading videos…");
+            else if (status.equals("unavailable")) subscriptionsLine = count > 0
+                    ? Ui.tr("Inscrições: últimos vídeos salvos · serviço indisponível.", "Subscriptions: saved videos · service unavailable.")
+                    : Ui.tr("Inscrições indisponíveis no momento.", "Subscriptions are currently unavailable.");
+            else subscriptionsLine = count > 0
+                    ? Ui.tr("Inscrições: " + count + " vídeos e lives recentes.", "Subscriptions: " + count + " recent videos and streams.")
+                    : Ui.tr("Inscrições: nenhum vídeo recente.", "Subscriptions: no recent videos.");
+            // The server adapts subscription cadence to quota; metric TTL must not age this snapshot.
+            subscriptionsTimestamp = dataTimestamp(recs.optLong("recommendationsAt"), recs.optBoolean("recommendationsStale", true));
         }
 
-        /** List row: no background; focused, white with a shadow (the Apple TV focus). Returns how focused it is. */
+        private String dataTimestamp(long at, boolean stale) {
+            return at <= 0 ? Ui.tr("Dados ainda indisponíveis", "Data not available yet")
+                    : Ui.tr("Dados de ", "Data from ") + new java.text.SimpleDateFormat(Ui.en ? "MMM d, HH:mm" : "dd/MM, HH:mm",
+                    Ui.en ? java.util.Locale.US : Ui.PT).format(new java.util.Date(at)) + " · " + ago(at)
+                    + (stale ? Ui.tr(" · desatualizados", " · out of date") : "");
+        }
+
+        /** Independent status and data age for own metrics and subscription cards. */
+        private float drawRecs(Canvas c, float y) {
+            float x = LIST_X * k + 30 * k;
+            c.drawText(Ui.tr("YOUTUBE · CANAL E INSCRIÇÕES", "YOUTUBE · CHANNEL AND SUBSCRIPTIONS"), x, y, header);
+            c.drawText(TextUtils.ellipsize(channelLine, notice, 790 * k, TextUtils.TruncateAt.END).toString(), x, y + 42 * k, notice);
+            version.setTextAlign(Paint.Align.LEFT);
+            c.drawText(TextUtils.ellipsize(channelTimestamp, notice, 790 * k, TextUtils.TruncateAt.END).toString(), x, y + 78 * k, version);
+            c.drawText(TextUtils.ellipsize(subscriptionsLine, notice, 790 * k, TextUtils.TruncateAt.END).toString(), x, y + 118 * k, notice);
+            c.drawText(TextUtils.ellipsize(subscriptionsTimestamp, notice, 790 * k, TextUtils.TruncateAt.END).toString(), x, y + 154 * k, version);
+            version.setTextAlign(Paint.Align.CENTER);
+            return y + 154 * k;
+        }
+
+        /** Focused list rows use the shared cyan action color. Returns the focus progress. */
         private float drawRowBackground(Canvas c, int i) {
             float f = Ui.clamp(pop[i].value);
+            if (skin.glass) scene.liquid(c, rowRect, 20 * k, theme.SURFACE, .22f, .03f, 16 * k, 10 * k, .7f, 1);
             if (f > 0.01f) {
                 float s = 1 + 0.02f * f;
                 float cx = rowRect.centerX(), cy = rowRect.centerY();
                 tmp.set(cx - rowRect.width() * s / 2, cy - rowRect.height() * s / 2, cx + rowRect.width() * s / 2, cy + rowRect.height() * s / 2);
-                float r = 18 * k * s;
+                float r = skin.radius * k * s;
                 tmp.offset(0, 10 * k * f);
                 shadow.setColor(Ui.alpha(0xFF000000, 0.4f * f));
                 c.drawRoundRect(tmp, r, r, shadow);
@@ -383,10 +426,10 @@ public class SettingsActivity extends Activity {
         private float drawComparison(Canvas c, float y) {
             float x = LIST_X * k + 30 * k, colA = LIST_R * k - 220 * k, colB = LIST_R * k - 30 * k;
             c.drawText(Ui.tr("COMPARAÇÃO", "COMPARISON"), x, y, header);
-            cellValue.setColor(0x73FFFFFF);
+            cellValue.setColor(theme.MUTED);
             c.drawText("Original", colA, y, cellValue);
             c.drawText("Free My TV", colB, y, cellValue);
-            cellValue.setColor(0xD9FFFFFF);
+            cellValue.setColor(theme.SECONDARY);
             JSONObject metrics = state.optJSONObject("metrics");
             JSONObject a = metrics == null ? null : metrics.optJSONObject(HomeMode.ORIGINAL);
             JSONObject b = metrics == null ? null : metrics.optJSONObject(HomeMode.FREE);
@@ -418,7 +461,7 @@ public class SettingsActivity extends Activity {
 
         /** Home screen choice: Free My TV or the original, with a check on the one in use. */
         private void drawChoice(Canvas c) {
-            Paint heading = Ui.text(Ui.displaySemibold, 34 * k, 0xFFFFFFFF);
+            Paint heading = Ui.text(fonts.displaySemibold, 34 * k, theme.TEXT);
             c.drawText(Ui.tr("Início", "Home Screen"), LIST_X * k + 30 * k, (LIST_TOP - 24) * k, heading);
             String[][] options = {{"Free My TV", Ui.tr("Sem anúncios, com a tela de descanso nova", "No ads, with the new screensaver")},
                     {"Original", Ui.tr("O Início de fábrica da TV", "The TV's factory home screen")}};
@@ -427,16 +470,16 @@ public class SettingsActivity extends Activity {
                 float y = (LIST_TOP + 20 + i * (CHOICE_H + ROW_GAP)) * k;
                 rowRect.set(LIST_X * k, y, LIST_R * k, y + CHOICE_H * k);
                 float f = drawRowBackground(c, i);
-                rowLabel.setColor(blend(0xF2FFFFFF, INK, f));
-                rowSub.setColor(blend(0x8CFFFFFF, 0x991C1C1E, f));
+                rowLabel.setColor(blend(theme.TEXT, theme.ON_FOCUS, f));
+                rowSub.setColor(blend(theme.SECONDARY, theme.ON_FOCUS, f));
                 c.drawText(options[i][0], rowRect.left + 30 * k, rowRect.top + 44 * k, rowLabel);
                 c.drawText(options[i][1], rowRect.left + 30 * k, rowRect.top + 80 * k, rowSub);
                 if (i == current) {
                     float cw = Symbols.width(getContext(), "check", 26 * k);
-                    Symbols.draw(getContext(), c, "check", rowRect.right - 30 * k - cw / 2, rowRect.centerY(), 26 * k, blend(0xFFFFFFFF, INK, f));
+                    Symbols.draw(getContext(), c, "check", rowRect.right - 30 * k - cw / 2, rowRect.centerY(), 26 * k, blend(theme.TEXT, theme.ON_FOCUS, f));
                 }
             }
-            Paint hint = Ui.text(Ui.regular, 23 * k, 0x8CFFFFFF);
+            Paint hint = Ui.text(fonts.regular, 23 * k, theme.SECONDARY);
             c.drawText(Ui.tr("A troca leva uns segundos e a tela pisca nas medições.",
                     "Switching takes a few seconds; the screen blinks while it measures."), LIST_X * k + 30 * k,
                     (LIST_TOP + 20 + 2 * (CHOICE_H + ROW_GAP) + 40) * k, hint);
@@ -505,8 +548,8 @@ public class SettingsActivity extends Activity {
                         if (e.getRepeatCount() == 0) backDown = true;
                     } else {
                         if (backDown && !e.isCanceled()) {
+                            focus = screen == SKIN_CHOICE ? 1 : 0;
                             screen = MAIN;
-                            focus = 0;
                         }
                         backDown = false;
                     }
@@ -518,9 +561,49 @@ public class SettingsActivity extends Activity {
             }
         }
 
+        private static String skinName(Skin option) {
+            return option.label;
+        }
+
+        private void refreshAppearance() {
+            Skin selected = SkinPreferences.load(getContext());
+            boolean dark = selected.isNight(data.isNight(System.currentTimeMillis()));
+            if (selected == skin && dark == night) return;
+            skin = selected;
+            night = dark;
+            fonts = Ui.fonts(getContext(), skin);
+            skin.apply(theme, dark ? 1 : 0);
+            HomeData.Weather wx = data.weather;
+            Shaders.sky(scene.palette, System.currentTimeMillis(), wx.sunrise, wx.sunset);
+            scene.applyPalette();
+            if (w > 0) onSizeChanged(w, h, w, h);
+            invalidate();
+        }
+
+        private void drawSkins(Canvas c) {
+            c.drawText(Ui.tr("Aparência", "Appearance"), LIST_X * k + 30 * k, (LIST_TOP - 24) * k, rowLabel);
+            Skin[] options = Skin.values();
+            for (int i = 0; i < options.length; i++) {
+                rowRect.set(rowBox(i));
+                float f = drawRowBackground(c, i);
+                rowLabel.setColor(blend(theme.TEXT, theme.ON_FOCUS, f));
+                rowSub.setColor(blend(theme.SECONDARY, theme.ON_FOCUS, f));
+                c.drawText(skinName(options[i]), rowRect.left + 30 * k, rowRect.top + 44 * k, rowLabel);
+                String detail = Ui.tr(options[i].descriptionPt, options[i].descriptionEn);
+                c.drawText(detail, rowRect.left + 30 * k, rowRect.top + 80 * k, rowSub);
+                if (options[i] == skin) Symbols.draw(getContext(), c, "check", rowRect.right - 43 * k,
+                        rowRect.centerY(), 26 * k, blend(theme.TEXT, theme.ON_FOCUS, f));
+            }
+            rowLabel.setColor(theme.TEXT);
+        }
+
         private void activate() {
             Context c = getContext();
-            if (screen == HOME_CHOICE) {
+            if (screen == SKIN_CHOICE) {
+                SkinPreferences.save(c, Skin.values()[focus]);
+                refreshAppearance();
+                spoken.readAgain();
+            } else if (screen == HOME_CHOICE) {
                 boolean wantFree = focus == 0;
                 if (wantFree != freeActive() && !busy()) {
                     HomeMode.request(c, wantFree ? HomeMode.FREE : HomeMode.ORIGINAL);
@@ -533,6 +616,9 @@ public class SettingsActivity extends Activity {
                 screen = HOME_CHOICE;
                 focus = freeActive() ? 0 : 1;
             } else if (focus == 1) {
+                screen = SKIN_CHOICE;
+                focus = skin.ordinal();
+            } else if (focus == 2) {
                 pause();
                 activity.showPreview();
             } else {

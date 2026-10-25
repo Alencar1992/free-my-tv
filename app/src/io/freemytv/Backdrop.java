@@ -15,7 +15,7 @@ import android.graphics.Shader;
  *  - the frosted version (192×108, heavily blurred) of the same image: the background of the frosted glass and of the
  *    bottom drawer;
  *  - the Liquid Glass version (480×270, lightly blurred): the photo shows through the shelf and the cards;
- *  - with forLight: the cards (the photo without scrims, cropped wide and tall, already at the focused card size) and
+ *  - with forLight: the cards (the entire thumbnail without scrims, fitted at the focused card size) and
  *    the frosted and glass versions blended with white (by day) and with near-black (at night).
  * Only what is needed gets built (with forLight, no full photo: the cards are lightweight, so all 9 for the three tabs
  * fit in memory, ready); the other fields stay null.
@@ -23,8 +23,8 @@ import android.graphics.Shader;
  */
 final class Backdrop {
     static final int W = 1920, H = 1080, FW = 192, FH = 108, GW = 480, GH = 270;
-    /** The cards at their focused size (1.05×): the wide one and the two tall ones. */
-    static final int WIDE_W = 1092, WIDE_H = 464, TALL_W = 336, TALL_H = 464;
+    /** The cards at their focused size (1.05×): all three share the same 16:9 image. */
+    static final int WIDE_W = 588, WIDE_H = 331, TALL_W = WIDE_W, TALL_H = WIDE_H;
     final Bitmap image;
     final int[] frost;      // heavily blurred (frosted glass, bottom drawer)
     final int[] glass;      // lightly blurred (Liquid Glass: the photo shows through the glass)
@@ -56,20 +56,21 @@ final class Backdrop {
         float scale = Math.max((float) W / src.getWidth(), (float) H / src.getHeight());
         float sw = src.getWidth() * scale, sh = src.getHeight() * scale;
         c.drawBitmap(src, null, new RectF((W - sw) / 2, (H - sh) / 2, (W + sw) / 2, (H + sh) / 2), photo);
-        src.recycle();
         if (forLight) {
-            // Light design: everything comes from the photo without scrims.
-            Bitmap wide = card(out, WIDE_W, WIDE_H), tall = card(out, TALL_W, TALL_H);
+            // Cards use the source itself, before the background's center crop, so no thumbnail content is lost.
+            Bitmap wide = card(src, WIDE_W, WIDE_H);
+            src.recycle();
             int[] frost = reduce(out, FW, FH, 3, 3);
-            int[] light = whiten(frost.clone(), 0.82f);
+            int[] light = whiten(frost.clone(), 0.62f);
             int[] glass = reduce(out, GW, GH, 2, 2);
-            int[] lightGlass = whiten(glass.clone(), 0.74f);
-            int[] night = darken(frost.clone(), 0.76f);
-            int[] nightGlass = darken(glass, 0.56f);
+            int[] lightGlass = whiten(glass.clone(), 0.62f);
+            int[] night = darken(frost.clone(), 0.64f);
+            int[] nightGlass = darken(glass, 0.64f);
             out.recycle();
-            return new Backdrop(null, frost, null, wide, tall, light, lightGlass, night, nightGlass);
+            return new Backdrop(null, frost, null, wide, wide, light, lightGlass, night, nightGlass);
         }
 
+        src.recycle();
         float boost = Math.max(0, Math.min(0.3f, (luminance(out, 0, 0.22f, 0.5f, 0.62f) - 0.22f) * 1.1f));
         Paint scrim = new Paint(Paint.DITHER_FLAG);
         scrim.setShader(new LinearGradient(0, 0, W * 0.68f, 0,
@@ -81,7 +82,7 @@ final class Backdrop {
                 new int[] {black(0.38f), black(0.3f), black(0.18f), black(0.05f), 0},
                 new float[] {0, 0.25f, 0.55f, 0.8f, 1}, Shader.TileMode.CLAMP));
         c.drawRect(0, H * 0.4f, W, H, scrim);
-        // Behind the prices (above the shelf, on the right), a localized scrim for the small text.
+        // Behind the channel metrics (above the shelf, on the right), a localized scrim for the small text.
         scrim.setShader(new android.graphics.RadialGradient(W * 0.8f, H * 0.65f, W * 0.24f,
                 new int[] {black(0.42f), black(0.18f), 0}, new float[] {0, 0.55f, 1}, Shader.TileMode.CLAMP));
         c.save();
@@ -101,7 +102,7 @@ final class Backdrop {
     static final int PHOTO_FROST = 6;
 
     /**
-     * Screensaver: the whole original from disk at w × h (center-cropped to that aspect ratio), filtered down, plus the
+     * Screensaver: the entire original from disk fitted at w × h, filtered down, plus the
      * frosted version (1/6, blurred) for the glass clock. `light` receives the luminance (0 to 1) where the caption
      * (bottom left) and the clock (top right) sit, for the scrims. Returns {photo (mutable), frosted}.
      */
@@ -115,18 +116,8 @@ final class Backdrop {
         while (bounds.outWidth / (opts.inSampleSize * 2) >= w && bounds.outHeight / (opts.inSampleSize * 2) >= h) opts.inSampleSize *= 2;
         Bitmap src = android.graphics.BitmapFactory.decodeFile(f.getPath(), opts);
         if (src == null) throw new java.io.IOException("unreadable image");
-        float ratio = (float) w / h;
-        int cw = Math.min(src.getWidth(), Math.round(src.getHeight() * ratio));
-        int ch = Math.min(src.getHeight(), Math.round(cw / ratio));
-        Bitmap b = Bitmap.createBitmap(src, (src.getWidth() - cw) / 2, (src.getHeight() - ch) / 2, cw, ch);
-        if (b != src) src.recycle();
-        while (b.getWidth() / 2 >= w) {
-            Bitmap half = Bitmap.createScaledBitmap(b, b.getWidth() / 2, b.getHeight() / 2, true);
-            b.recycle();
-            b = half;
-        }
-        Bitmap out = b.getWidth() == w && b.getHeight() == h ? b : Bitmap.createScaledBitmap(b, w, h, true);
-        if (out != b) b.recycle();
+        Bitmap out = fit(src, w, h);
+        src.recycle();
         if (light != null && light.length >= 2) {
             light[0] = luminance(out, 0, 0.6f, 0.5f, 0.95f);
             light[1] = luminance(out, 0.62f, 0.04f, 0.96f, 0.36f);
@@ -141,20 +132,28 @@ final class Backdrop {
         return new Bitmap[] {out, frost};
     }
 
-    /** The center of the photo at the card's aspect ratio, filtered down (halving while possible) to the exact size. */
-    private static Bitmap card(Bitmap full, int w, int h) {
-        float ratio = (float) w / h;
-        int cw = Math.min(full.getWidth(), Math.round(full.getHeight() * ratio));
-        int ch = Math.min(full.getHeight(), Math.round(cw / ratio));
-        Bitmap b = Bitmap.createBitmap(full, (full.getWidth() - cw) / 2, (full.getHeight() - ch) / 2, cw, ch);
-        while (b.getWidth() / 2 >= w) {
+    /** Fits the entire source into the target, reducing large images in background before the final draw. */
+    private static Bitmap fit(Bitmap full, int w, int h) {
+        Bitmap b = full;
+        float scale = Math.min((float) w / full.getWidth(), (float) h / full.getHeight());
+        int tw = Math.max(1, Math.round(full.getWidth() * scale));
+        int th = Math.max(1, Math.round(full.getHeight() * scale));
+        while (b.getWidth() / 2 >= tw && b.getHeight() / 2 >= th) {
             Bitmap half = Bitmap.createScaledBitmap(b, b.getWidth() / 2, b.getHeight() / 2, true);
             if (b != full) b.recycle();
             b = half;
         }
-        Bitmap out = Bitmap.createScaledBitmap(b, w, h, true);
-        if (b != full && b != out) b.recycle();
-        return gpu(out);
+        Bitmap out = Bitmap.createBitmap(w, h, Bitmap.Config.ARGB_8888);
+        Canvas c = new Canvas(out);
+        c.drawColor(0xFF111113);
+        Paint p = new Paint(Paint.FILTER_BITMAP_FLAG | Paint.DITHER_FLAG);
+        c.drawBitmap(b, null, new RectF((w - tw) / 2f, (h - th) / 2f, (w + tw) / 2f, (h + th) / 2f), p);
+        if (b != full) b.recycle();
+        return out;
+    }
+
+    private static Bitmap card(Bitmap full, int w, int h) {
+        return gpu(fit(full, w, h));
     }
 
     /** Copies it to GPU memory (cheap to draw; the process doesn't keep the pixels). */

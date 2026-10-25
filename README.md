@@ -1,170 +1,154 @@
-<div align="center">
+# Free My TV — versão ViktorKav
 
-<img src="docs/assets/icon-512.png" width="96" alt="">
+Minha adaptação do **[Free My TV, criado por Simba / simbasjungles](https://github.com/simbasjungles/free-my-tv)**: uma tela inicial para Google TV e Android TV, com duas skins, atalhos de aplicativos e um feed opcional das suas inscrições do YouTube. O projeto original é distribuído sob a licença MIT; este fork preserva seus créditos e sua base.
 
-# Free My TV
+**[Tutorial e material de apoio](https://viktorkav.com.br/tutoriais/free-my-tv.html)** · **[Baixar o APK deste fork](https://github.com/viktorkav/free-my-tv/releases/tag/v1.7.0-vkav.1)** · [Personalizar o código](docs/customizacoes-viktorkav.md) · [Configurar seu feed](docs/feed-pessoal.md)
 
-**A fast, ad-free home screen for Google TV.**
+## O que mudou
 
-Trending picks from your own apps, the weather at a glance, and a look that follows the sunset.<br>
-Open source. Built with Claude Code. One button to undo.
+- **Duas skins selecionáveis:** ViktorKav, com grafite e foco ciano; e Apple Liquid Glass, uma interpretação visual com vidro e modos claro/noturno. A segunda não é um produto da Apple.
+- **Três vídeos grandes por grupo**, navegáveis pelas setas do controle, com canais diferentes no grupo e sem repetir o mesmo vídeo durante a sessão. O catálogo tem um fim.
+- **Feed pessoal opcional:** vídeos recentes dos canais da conta que você autorizar, com filtragem de Shorts. A coleta roda em um servidor seu, separado da TV.
+- **Atalhos pessoais:** YouTube, Twitch, Apple TV, Prime Video, Jellyfin, Stremio e Globoplay, quando disponíveis no aparelho. Outros aplicativos continuam em Todos os Apps.
+- **Tela de descanso e configurações** acompanham a skin; o descanso usa as miniaturas disponíveis no feed e exibe relógio e clima.
 
-[**freemytv.io**](https://freemytv.io) · [Install](#install) · [Any TV](#any-tv) · [Make it yours](#make-it-yours)
+O launcher substitui a tela inicial. Ele não remove anúncios de dentro dos aplicativos, não libera conteúdo pago e não substitui assinaturas de serviços.
 
-<img src=".github/preview.webp" width="880" alt="The Free My TV home screen: a glass shelf of apps, trending picks, and a drawer with the weather and crypto prices">
+## O que vem no APK público
 
-</div>
+A release `v1.7.0-vkav.1` inclui as skins e a interface, **sem conta Google, credenciais, inscrições ou endereço de servidor do Victor**. O feed começa desativado e as métricas do canal ficam ocultas. Você pode usar os atalhos e trocar a aparência sem montar um servidor.
 
-## What you get
+Os cards de inscrições precisam de [configuração adicional](docs/feed-pessoal.md) e de um APK compilado com o endereço do seu serviço. Não há um campo na TV para digitar esse endereço nesta versão.
 
-- **No ads.** No sponsored rows, banners or autoplaying promos. Not one.
-- **Your apps, front and center.** The streaming apps you actually use, on a glass shelf.
-- **Trending, not sponsored.** Three fresh picks every hour from what's trending this week and the latest releases, only from apps you already have. Movies and Shows get their own tabs.
-- **Weather and markets, one press away.** The hour-by-hour forecast, sunrise and sunset, and live crypto prices.
-- **Light by day, dark by night.** It follows your city's real sunset, the way your phone does.
-- **A screensaver to match.** Full-screen photos of the picks with a big glass clock.
-- **Fast.** 60 fps, every frame in 16.6 ms, on the TV's own chip. The home screen uses 96 MB of memory instead of 242 MB (−60%).<br><sub>Measured on a 98″ TCL Google TV running Android 14.</sub>
-- **Safe.** No root. Nothing is uninstalled. One button brings back the factory home screen.
+O idioma acompanha o aparelho, com textos em português e inglês. O clima usa coordenadas genéricas de Nova York por padrão; a cidade é configurável ao compilar. A localização não é detectada automaticamente.
 
-## Install
+## Compatibilidade e limites
 
-About ten minutes. You need a Google TV or Android TV (Android 12 or newer) and a computer on the same Wi-Fi.
+Este fork exige **Android 12 ou mais recente** (`minSdk 31`). Uma TV com Google TV ou Android TV, ou um aparelho externo com esse sistema conectado por HDMI, é o caminho compatível. Ainda é necessário que o aparelho permita ADB e a troca da tela inicial.
 
-### The easy way: Claude Code
+As adaptações que deram origem ao fork foram usadas em uma TCL com Android 12. Isso não comprova funcionamento em todas as TVs, e não representa um teste físico da nova release pública. O caminho de shaders do Android 13+ também pode se comportar de forma diferente do fallback do Android 12.
 
-1. **On the TV**, turn on developer mode: Settings → System → About → press *Android TV OS build* 7 times. Then Settings → System → Developer options → turn on **USB debugging**. Write down the TV's IP address (Settings → Network & Internet).
-2. **On your computer**, get the code:
-   ```bash
-   git clone https://github.com/simbasjungles/free-my-tv && cd free-my-tv
-   ```
-3. **Open [Claude Code](https://claude.com/claude-code) in that folder** and say:
-   > Install Free My TV on my TV at 192.168.1.50. I live in Lisbon.
+Este APK não é instalável em webOS ou Tizen. Consulte o [projeto original](https://github.com/simbasjungles/free-my-tv) para outras plataformas e versões; os requisitos dele podem ser diferentes dos deste fork.
 
-   It installs the tools it needs, builds the app and puts it on your TV. Swap in your TV's IP and your city.
-4. **On the TV**, open *Free My TV* → *Home Screen* → *Free My TV*, and accept the debugging prompt (tick *Always allow*).
+O consumo de memória e a resposta do controle variam por aparelho e configuração. O teste apresentado no tutorial mostrou menor uso de memória em uma rodada, sem demonstrar ganho de velocidade. Não há promessa de acelerar sua TV.
 
-### The manual way
+## Instalar o APK pronto
 
-1. **On the TV**, do step 1 above.
-2. **Tools:** a JDK (17+), the Android SDK command-line tools (build-tools 34, platform android-34) and adb. On a Mac:
-   ```bash
-   brew install --cask temurin android-commandlinetools android-platform-tools
-   sdkmanager "build-tools;34.0.0" "platforms;android-34"
-   ```
-   On Linux, get OpenJDK 17, Android's command-line tools and adb from your package manager, then run the same `sdkmanager` line. On Windows, use WSL.
-3. **Build:**
-   ```bash
-   ./build.sh
-   ```
-   The first run creates `config.properties`. Set your city and your [TMDB key](#the-tmdb-key) there, then run it again.
-4. **Install:**
-   ```bash
-   adb connect 192.168.1.50:5555
-   adb install -r FreeMyTV.apk
-   ```
-   On TCL TVs, also let it run in the background (TCL blocks it by default, and the switch never starts):
-   ```bash
-   adb shell appops set io.freemytv AUTO_START allow
-   ```
-5. **On the TV**, open *Free My TV* → *Home Screen* → *Free My TV*.
+Você precisa de um computador, do controle da TV e dos dois aparelhos na mesma rede.
 
-## Settings
+1. Baixe o APK na [release deste fork](https://github.com/viktorkav/free-my-tv/releases/tag/v1.7.0-vkav.1) e o [Android SDK Platform Tools oficial](https://developer.android.com/tools/releases/platform-tools) para seu computador. Extraia o Platform Tools e coloque `FreeMyTV.apk` nessa pasta.
+2. Na TV, abra Configurações → Sistema → Sobre e pressione sete vezes o item de compilação do Android TV para liberar as opções de desenvolvedor. Volte e ative Depuração USB. Os nomes dos menus variam por fabricante.
+3. Nos detalhes de Rede e Internet, anote o IP da TV. Abra o terminal na pasta `platform-tools`.
+4. Conecte. **Troque `IP_DA_TV` pelo endereço do seu aparelho. Execute uma linha por vez: após conectar, aceite a autorização na TV e só prossiga quando `devices` mostrar `device`.**
 
-Everything lives in `config.properties`, created by the first build:
+macOS/Linux:
 
-| Key | What it does | Default |
-|---|---|---|
-| `tmdb_key` | Your free TMDB key, for the picks | empty |
-| `tmdb_region` | Your country (two letters): which titles are on which app | `US` |
-| `latitude`, `longitude` | Your city, for the weather and the sunset | New York |
-| `city` | The name on the weather card | `Weather` |
-| `language` | `auto` (follows the TV), `en` or `pt` | `auto` |
-| `show_crypto` | Show Binance crypto prices on home and screensaver | `true` |
-| `currency` | Crypto prices in `USD`, `EUR`, `BRL`… | `USD` |
-| `temperature` | `C`, `F` or `auto` | `auto` |
-| `disable_assistant` | Also turn off Google Assistant | `false` |
+```sh
+./adb connect IP_DA_TV:5555
+./adb devices
+```
 
-Changed something? Run `./build.sh` and install again. Keep `freemytv.keystore`: updates are signed with it.
+Windows/PowerShell:
 
-### The TMDB key
+```powershell
+.\adb.exe connect IP_DA_TV:5555
+.\adb.exe devices
+```
 
-Free, and it takes two minutes: create an account at [themoviedb.org](https://www.themoviedb.org/signup), then open [Settings → API](https://www.themoviedb.org/settings/api) and request a developer key. Paste the *API Read Access Token* (or the *API Key*) after `tmdb_key=`. It's your key: `config.properties` stays out of git.
+Autorize a conexão pelo controle quando a TV pedir. Em `devices`, o aparelho deve aparecer como `device`; `unauthorized` indica autorização pendente. Alguns modelos exigem pareamento sem fio ou habilitação específica da porta 5555. Consulte a [documentação do ADB](https://developer.android.com/tools/adb) e o procedimento do seu aparelho quando esse caminho não funcionar.
 
-## Going back
+5. Com o estado `device` confirmado, instale o APK:
 
-On the TV: *Free My TV* → *Home Screen* → *Original*. The factory home screen, screensaver and every app come back exactly as they were. If the new home screen ever crashes three times in five minutes, it switches back by itself.
+```sh
+./adb -s IP_DA_TV:5555 install -r FreeMyTV.apk
+```
 
-To remove it for good, switch to *Original* first, then uninstall *Free My TV* (Settings → Apps).
+No PowerShell, use `.\adb.exe` no lugar de `./adb`. Aguarde `Success`. Abra Free My TV na televisão. Antes da troca da home, desconecte o computador:
 
-## What it changes
+```sh
+./adb disconnect IP_DA_TV:5555
+```
 
-- It becomes the home screen and the screensaver.
-- It turns off, without uninstalling:
-  - the stock home screen and screensaver, with the remote shortcuts they run on some TVs (like the Netflix button on TCL);
-  - Google TV's recovery home, Play Games and YouTube Music;
-  - on TCL TVs, the TCL Channel, messages, store demo, hotel menu, manuals, mirroring and logging apps;
-  - Google Assistant, only with `disable_assistant=true`.
-- Picture, sound, inputs, remote pairing, Google services and the Play Store are on a protected list, checked before every change.
-- Apps that saved a Wi-Fi network are never turned off, since Android would erase the network. If the TV's first setup saved yours, the switch asks you to forget the network and connect again in Settings first.
+No PowerShell, use `.\adb.exe` no lugar de `./adb`.
 
-## Any TV
+6. No próprio aplicativo, pelo controle, escolha **Início / Home Screen → Free My TV**. Pode aparecer uma segunda autorização de depuração: agora é o aplicativo conectando à própria TV.
+7. Teste Início, abertura e retorno dos apps, volume, entradas e atalhos do controle. Confira também a opção **Original**, antes de continuar personalizando.
 
-Free My TV runs on Google TV and Android TV: TCL, Sony, Hisense, Philips, Xiaomi and more, plus streamers like Chromecast with Google TV, the Google TV Streamer, onn 4K and NVIDIA Shield.
+### Particularidade de algumas TCL
 
-**Samsung, LG or any other TV:** plug a Google TV streamer into HDMI and free that one. Same steps, same home screen.
+Se a troca não iniciar por bloqueio de execução em segundo plano, reconecte o computador:
 
-**A different brand or model:** ask Claude. Free My TV is made to be adapted by AI. Open the folder in Claude Code and say *"set it up for my Sony"*: it reads your TV, finds its home screen and its promo apps, updates the lists below and walks you through a test. [CLAUDE.md](CLAUDE.md) tells it how.
+```sh
+./adb connect IP_DA_TV:5555
+./adb devices
+```
 
-| What | Where |
+Aceite a autorização na TV se for solicitada e confirme o estado `device`. Só depois aplique a permissão:
+
+```sh
+./adb -s IP_DA_TV:5555 shell appops set io.freemytv AUTO_START allow
+```
+
+Esse foi um ajuste necessário na TCL usada no projeto; não é um comando universal para outras marcas. Depois, desconecte o ADB do computador e repita a troca pelo aplicativo.
+
+### Se já existe outro Free My TV instalado
+
+Este fork conserva o pacote Android `io.freemytv`, mas a release pública usa **uma assinatura própria**. Um APK do projeto original ou um build pessoal pode ter outra assinatura e produzir `INSTALL_FAILED_UPDATE_INCOMPATIBLE`.
+
+Nesse caso, abra a versão instalada, selecione **Original** e confira que a home de fábrica voltou. Só então desinstale o aplicativo pelas configurações da TV e instale este APK. A desinstalação apaga as preferências locais. Não tente forçar uma atualização com assinatura incompatível.
+
+## Voltar para a tela original
+
+Abra Free My TV → Início / Home Screen → **Original**, usando o controle. O app tenta restaurar o launcher, o screensaver e o estado dos pacotes que registrou antes da mudança. Confira os recursos do aparelho depois da volta.
+
+**Volte para Original antes de desinstalar.** Desinstalar diretamente pode deixar os aplicativos desativados sem restaurá-los. Se isso já ocorreu, a recuperação depende dos pacotes e do launcher específicos do aparelho; consulte `HomeMode.java` e o registro anterior antes de habilitar pacotes ou definir uma atividade de início.
+
+O projeto mantém um watchdog para retornar à home de fábrica após falhas repetidas. Ele depende da autorização ADB e da execução em segundo plano e não substitui um backup integral da TV. Pacotes que salvaram redes Wi-Fi recebem proteção específica; preserve essas verificações ao modificar o código.
+
+## Compilar sua versão
+
+O Android é escrito em Java e compilado sem Gradle. Você precisa de JDK 17 ou mais recente e Android SDK com build-tools e plataforma 34 ou superiores. Consulte as [ferramentas oficiais do Android](https://developer.android.com/tools).
+
+```sh
+git clone --branch viktorkav https://github.com/viktorkav/free-my-tv.git
+cd free-my-tv
+cp config.example.properties config.properties
+```
+
+Edite `config.properties` antes do build. Para preparar o SDK já instalado:
+
+```sh
+sdkmanager "build-tools;34.0.0" "platforms;android-34"
+./build.sh
+```
+
+Informe `JAVA_HOME` e `ANDROID_HOME` se as ferramentas não forem encontradas. Em Windows, use um ambiente Bash compatível, como WSL, para compilar, e o Platform Tools do Windows para se conectar à TV.
+
+O sucesso termina com `Built FreeMyTV.apk`. `build.sh` cria `freemytv.keystore` no primeiro build: guarde essa chave em local privado, pois as próximas atualizações precisam da mesma assinatura. Seu build não terá a assinatura da release pública; siga a seção de migração acima quando necessário.
+
+| Configuração | Uso neste fork |
 |---|---|
-| Apps to turn off | `DEBLOAT` in [`HomeMode.java`](app/src/io/freemytv/HomeMode.java) |
-| Apps never to touch | `PROTECTED` in the same file |
-| Apps on the shelf | `SHELF` in [`HomeApps.java`](app/src/io/freemytv/HomeApps.java) |
-| Your brand's live TV app | `LIVE_TV_APPS` in the same file |
+| `latitude`, `longitude`, `city` | Coordenadas e nome da sua cidade para clima e ciclo dia/noite. |
+| `language` | `auto`, `pt` ou `en`. |
+| `temperature` | `C`, `F` ou `auto`. |
+| `channel_feed_url` | URL do seu serviço opcional; vazio por padrão. Veja o [guia do feed](docs/feed-pessoal.md), inclusive a configuração HTTP/HTTPS. |
+| `show_channel_metrics` | Exibe métricas públicas do canal ViktorKav; `false` por padrão. Não são métricas da conta autorizada. |
+| `disable_assistant` | `false` por padrão. Ativar também desliga o Assistente e pode afetar o botão de microfone do controle. |
 
-## Make it yours
+Os campos TMDB e criptomoedas são herdados do upstream. As recomendações desta adaptação usam o feed do YouTube; não é preciso obter uma chave TMDB ou configurar Binance.
 
-It's your code, and Claude Code finds its way around it. Try:
+## Desenvolvimento e privacidade
 
-- *"Add Crunchyroll to the shelf."*
-- *"Show the prices in euros."*
-- *"Add Spanish."*
-- *"Switch to the night look an hour after sunset."*
+- [Guia das customizações](docs/customizacoes-viktorkav.md): mapa do código, skins, navegação e um pedido inicial para usar com um agente de IA.
+- [Guia do feed pessoal](docs/feed-pessoal.md): API, OAuth somente leitura, serviço na rede local e compilação do cliente.
+- [Instruções para agentes](CLAUDE.md): regras para alterar, testar e instalar o projeto.
 
-## How it works
+O clima consulta Open-Meteo com as coordenadas configuradas. Com o feed ativo, a TV consulta seu servidor e baixa miniaturas do YouTube. O servidor consulta a API do YouTube e verifica o formato de alguns vídeos pela rota pública de Shorts. Chaves de API e credenciais OAuth ficam no servidor; o APK contém a URL que você configurar e dados de clima, portanto trate esses campos como informação extraível do aplicativo.
 
-- **A plain Android app, no Gradle, no libraries.** [`build.sh`](build.sh) runs aapt2 → javac → d8 → zipalign → apksigner and makes a 2 MB APK.
-- **It uses the TV's own ADB, from inside the TV.** The app connects to `127.0.0.1:5555` with its own key (that's the *Allow USB debugging?* prompt) and runs the same commands you would: `cmd package set-home-activity`, `settings put secure screensaver_components`, `pm disable-user`. Nothing listens to the network.
-- **Drawn by hand on one Canvas**, with Android 13 shaders for the frosted glass and the sky (plain fills on Android 12).
-- **A safety net.** A watchdog in a separate process brings back the stock home screen after three crashes in five minutes, and a boot check keeps your choice after TV updates.
-- **Data** from TMDB (trending titles, new releases and which app streams what in your country), Open-Meteo (forecast, sunrise and sunset), and optionally Binance (24-hour prices when `show_crypto=true`).
+O feed revela seus vídeos e canais de interesse a quem puder acessá-lo na rede. Ele deve ficar restrito à sua rede privada; não há autenticação no endpoint HTTP fornecido. Sem feed configurado, não há acesso à conta ou às inscrições de ninguém.
 
-| File | What it is |
-|---|---|
-| [`HomeView.java`](app/src/io/freemytv/HomeView.java) | The home screen |
-| [`HomeMode.java`](app/src/io/freemytv/HomeMode.java) | Switching between Free My TV and Original |
-| [`Adb.java`](app/src/io/freemytv/Adb.java) | The TV's own ADB, from inside the TV |
-| [`Recs.java`](app/src/io/freemytv/Recs.java) | The picks (TMDB) |
-| [`HomeData.java`](app/src/io/freemytv/HomeData.java) | Weather and prices |
-| [`HomeApps.java`](app/src/io/freemytv/HomeApps.java) | The shelf, inputs and All Apps |
-| [`DreamView.java`](app/src/io/freemytv/DreamView.java) | The screensaver |
-| [`SettingsActivity.java`](app/src/io/freemytv/SettingsActivity.java) | The settings screen (the app's icon) |
-| [`Watchdog.java`](app/src/io/freemytv/Watchdog.java) | The safety net |
+## Créditos e licença
 
-The website ([freemytv.io](https://freemytv.io)) is in [`docs/`](docs): plain HTML, CSS and JS on GitHub Pages.
+O trabalho original é de **[Simba / simbasjungles e contribuidores do Free My TV](https://github.com/simbasjungles/free-my-tv)**, que relata ter criado o projeto com Claude Code. As adaptações de visual e feed foram feitas por ViktorKav com ajuda de Codex. Este fork parte do commit upstream `73409804e5085e720dccea9ab95078a515cae098`; a numeração de suas releases é independente.
 
-## Privacy
-
-No accounts, no analytics, no tracking. The app talks to TMDB, Open-Meteo (with the coordinates you set), and Binance only when `show_crypto=true`. Your settings stay on your computer and your TV.
-
-## Credits
-
-- Built with [Claude Code](https://claude.com/claude-code).
-- This product uses the TMDB API but is not endorsed or certified by [TMDB](https://www.themoviedb.org/).
-- Weather data by [Open-Meteo.com](https://open-meteo.com/) (CC BY 4.0). Prices from the [Binance](https://www.binance.com/) public API.
-- Icons: [Material Symbols](https://fonts.google.com/icons) (Apache 2.0). Font: [Inter](https://rsms.me/inter/) (SIL OFL 1.1). Coin logos: [cryptocurrency-icons](https://github.com/spothq/cryptocurrency-icons) (CC0).
-- Not affiliated with Google, TCL or any streaming service. App names and logos belong to their owners.
-
-## License
-
-[MIT](LICENSE). Fork it, change it, ship it.
+A [licença MIT original](LICENSE) permanece incluída. Inter, IBM Plex Sans e JetBrains Mono têm licenças OFL em `app/assets/fonts/`; Material Symbols usa Apache 2.0. As fontes de logos estão em [app/assets/logos/SOURCES.md](app/assets/logos/SOURCES.md). Clima por [Open-Meteo](https://open-meteo.com/). Marcas, nomes e logos dos aplicativos pertencem aos respectivos titulares; não há afiliação com Google, Apple, TCL, Twitch ou serviços de streaming.

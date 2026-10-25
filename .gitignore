@@ -9,3 +9,22 @@ out/
 
 # macOS
 .DS_Store
+
+# Local development workspaces and test-only dependencies
+.worktrees/
+.test-deps/
+.test-out/
+.superpowers/
+__pycache__/
+
+# Personal feed credentials and runtime data
+.env
+.env.*
+!.env.example
+state/
+credentials/
+client_secret*.json
+*oauth*.json
+channel.json
+subscriptions.json
+authorization-url.json

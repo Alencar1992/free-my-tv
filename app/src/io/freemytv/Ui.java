@@ -7,6 +7,7 @@ import android.graphics.Paint;
 import android.graphics.Rect;
 import android.graphics.RectF;
 import android.graphics.Typeface;
+import android.graphics.drawable.Drawable;
 
 import java.io.IOException;
 import java.io.InputStream;
@@ -15,9 +16,7 @@ import java.util.Date;
 import java.util.Locale;
 
 /**
- * Fonts and text for the home screen, the screensaver and the settings. Font: Inter (variable, assets/fonts, SIL OFL),
- * with the "display" optical size for large text and the "text" size for small text; without it, the system font at a
- * similar weight.
+ * Shared IBM Plex Sans text, JetBrains Mono measurements and the original ViktorKav monogram.
  */
 final class Ui {
     private Ui() {}
@@ -25,8 +24,10 @@ final class Ui {
     static final Locale PT = new Locale("pt", "BR");
     /** English or Portuguese, from config.properties ("language") or, with "auto", the TV's own language. */
     static volatile boolean en = english();
-    static Typeface thin, light, displayMedium, displaySemibold, regular, medium, semibold;
+    static Typeface thin, light, displayMedium, displaySemibold, regular, medium, semibold, mono;
+    private static Drawable brand;
     private static boolean loaded;
+    private static Fonts channelFonts, glassFonts;
     private static final Rect BOUNDS = new Rect();
     private static final RectF OVAL = new RectF();
 
@@ -34,21 +35,21 @@ final class Ui {
         if (loaded) return;
         loaded = true;
         AssetManager a = c.getAssets();
-        thin = font(a, 32, 200);
-        light = font(a, 32, 300);
-        displayMedium = font(a, 32, 500);
-        displaySemibold = font(a, 32, 600);
-        regular = font(a, 14, 400);
-        medium = font(a, 14, 500);
-        semibold = font(a, 14, 600);
+        channelFonts = new Fonts(a, false);
+        thin = channelFonts.thin; light = channelFonts.light;
+        displayMedium = channelFonts.displayMedium; displaySemibold = channelFonts.displaySemibold;
+        regular = channelFonts.regular; medium = channelFonts.medium;
+        semibold = channelFonts.semibold; mono = channelFonts.mono;
+        brand = c.getDrawable(R.drawable.vk).mutate();
+        brand.setTint(TvTheme.BRAND);
     }
 
-    /** Inter at an optical size (14 = text, 32 = display) and weight; the system font if the file is missing. */
-    private static Typeface font(AssetManager a, int opticalSize, int weight) {
-        if (has(a, FONT)) {
+    /** A bundled variable font at the requested weight; the system font if the file is missing. */
+    private static Typeface font(AssetManager a, String path, int weight) {
+        if (has(a, path)) {
             try {
-                Typeface t = new Typeface.Builder(a, FONT)
-                        .setFontVariationSettings("'opsz' " + opticalSize + ", 'wght' " + weight).build();
+                Typeface t = new Typeface.Builder(a, path)
+                        .setFontVariationSettings("'wght' " + weight).build();
                 if (t != null) return t;
             } catch (RuntimeException ignored) {
             }
@@ -56,7 +57,40 @@ final class Ui {
         return Typeface.create(Typeface.DEFAULT, weight, false);
     }
 
-    private static final String FONT = "fonts/InterVariable.ttf";
+    private static final String FONT = "fonts/IBMPlexSans.ttf";
+
+    static synchronized Fonts fonts(Context c, Skin skin) {
+        init(c);
+        if (!skin.glass) return channelFonts;
+        if (glassFonts == null) glassFonts = new Fonts(c.getAssets(), true);
+        return glassFonts;
+    }
+
+    /** Font sets are immutable: a paused Home never inherits fonts from another view. */
+    static final class Fonts {
+        final Typeface thin, light, displayMedium, displaySemibold, regular, medium, semibold, mono;
+        private final boolean glass;
+        Fonts(AssetManager a, boolean glass) {
+            this.glass = glass;
+            String path = glass ? "fonts/InterVariable.ttf" : FONT;
+            thin = font(a, path, glass ? 200 : 300);
+            light = font(a, path, 300);
+            displayMedium = font(a, path, 500); displaySemibold = font(a, path, 600);
+            regular = font(a, path, 400); medium = font(a, path, 500); semibold = font(a, path, 600);
+            mono = glass ? regular : font(a, "fonts/JetBrainsMono.ttf", 400);
+        }
+        Paint numbers(Typeface face, float size, int color) {
+            Paint p = text(glass ? face : Typeface.create(mono, face.getWeight(), false), size, color);
+            p.setFontFeatureSettings("'tnum'");
+            return p;
+        }
+    }
+
+    static void brand(Canvas c, float x, float y, float size) {
+        if (brand == null) return;
+        brand.setBounds(Math.round(x), Math.round(y), Math.round(x + size), Math.round(y + size * 1297 / 1332));
+        brand.draw(c);
+    }
 
     /** "en"/"pt" in config.properties, or "auto": Portuguese when the TV is set to Portuguese, English otherwise. */
     static boolean english() {
@@ -84,7 +118,7 @@ final class Ui {
 
     /** Fixed-width digits (the clock and the prices don't jitter when a digit changes). */
     static Paint numbers(Typeface face, float size, int color) {
-        Paint p = text(face, size, color);
+        Paint p = text(Typeface.create(mono, face.getWeight(), false), size, color);
         p.setFontFeatureSettings("'tnum'");
         return p;
     }

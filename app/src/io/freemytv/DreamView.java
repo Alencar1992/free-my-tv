@@ -7,6 +7,8 @@ import android.graphics.Canvas;
 import android.graphics.LinearGradient;
 import android.graphics.Matrix;
 import android.graphics.Paint;
+import android.graphics.PorterDuff;
+import android.graphics.PorterDuffXfermode;
 import android.graphics.RadialGradient;
 import android.graphics.Rect;
 import android.graphics.RecordingCanvas;
@@ -31,24 +33,23 @@ import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 
 /**
- * The screensaver, in the same style as the home screen:
- *  - the recommendations' photos in full screen, one every 30 s, with a slow zoom and pan (the "Ken Burns" effect of
- *    the Apple TV photos) and a crossfade between them; each photo is loaded 10% larger than the screen, so the zoom
- *    never upscales it;
- *  - top right, like the iPhone lock screen: the date with the weather, the big Liquid Glass clock (the photo shows
- *    through the digits, bent at the edges; Shaders.GLASS_TEXT) and the compact prices;
- *  - bottom left, the photo's caption: the time-of-day label ("TONIGHT"), the title, and genre · runtime · service.
- * Dark scrims only where there is text, stronger where the photo is bright. Any key exits (as on Apple TV).
- * Without photos (no TMDB key, or before the first fetch): the big clock over the night aurora.
+ * Skin-aware screensaver: channel composition or full-screen photos with a refractive clock,
+ * dated public channel metrics and weather. Existing crossfades and idle drift are preserved.
  */
 final class DreamView extends View implements Choreographer.FrameCallback, HomeData.Listener, Recs.Listener {
     private static final long SHOW_MS = 30_000, FADE_MS = 3_000, FIRST_MS = 1_600;
-    private static final float ZOOM = 0.1f;
-    /** Photos 10% larger than the screen (the zoom goes up to 1.1 without upscaling). */
-    private static final int PW = 2112, PH = 1188;
-    private static final float MARGIN = 80, RIGHT = 1840, TITLE_W = 900, META_BASE = 1008;
-    private static final float DATE_BASE = 92, CLOCK_TOP = 120, CLOCK_SIZE = 200, QUOTES_GAP = 52;
+    private static final float ZOOM = 0; // Keep text and faces at the thumbnail edges visible.
+    /** Fit thumbnails to the screen without a zoom crop. */
+    private static final int PW = 1920, PH = 1080;
+    private static final float MARGIN = 80, RIGHT = 1840, META_BASE = 1008;
+    private final float TITLE_W, DATE_BASE, CLOCK_TOP, CLOCK_SIZE;
+    private static final float QUOTES_GAP = 52;
+    private final Skin skin;
+    private final Skin.Palette theme = new Skin.Palette();
+    private final Ui.Fonts fonts;
     private static final double DRIFT_PERIOD_S = 600;
+    private static final String[] METRIC_PT = {"Inscritos", "Views canal", "Views último vídeo", "Likes último vídeo"};
+    private static final String[] METRIC_EN = {"Subscribers", "Channel views", "Latest video views", "Latest video likes"};
 
     /** One photo on screen: the image, its motion (zooming in or out, toward a corner) and its caption. */
     private static final class Slide {
@@ -60,6 +61,8 @@ final class DreamView extends View implements Choreographer.FrameCallback, HomeD
         final float panX, panY;
         final RenderNode caption = new RenderNode("caption");
         long startedAt;
+        Glass clockFor, clockImageFor;
+        Bitmap clockImage;
 
         Slide(Recs.Pick pick, Bitmap image, Bitmap frost, float lightCaption, float lightClock, int n) {
             this.pick = pick;
@@ -101,7 +104,7 @@ final class DreamView extends View implements Choreographer.FrameCallback, HomeD
     private final Handler handler = new Handler(Looper.getMainLooper());
     private ExecutorService worker = Executors.newSingleThreadExecutor();
     private final RenderNode content = new RenderNode("clock");     // without photos: the clock over the aurora
-    private final RenderNode chrome = new RenderNode("corner");     // date, weather, prices and the clock's shadow
+    private final RenderNode chrome = new RenderNode("corner");     // date, weather, metrics and the clock's shadow
     private final float timeOffset = (float) (Math.random() * 300);
     private final Matrix matrix = new Matrix();
     private final float[] placeA = new float[3], placeB = new float[3];
@@ -109,7 +112,8 @@ final class DreamView extends View implements Choreographer.FrameCallback, HomeD
     private final Paint black = new Paint();
     private final Paint shadowPaint = new Paint(Paint.FILTER_BITMAP_FLAG);
     private final Paint glassPaint = new Paint();
-    private final Set<String> failed = new HashSet<>();     // Recs.key: a movie and a series can have the same ID
+    private final Paint clockMixPaint = new Paint(Paint.FILTER_BITMAP_FLAG);
+    private final Set<String> failed = new HashSet<>();     // Failed thumbnail keys for this screensaver session
     private RuntimeShader glassShader;
     private boolean running, dirty = true, chromeDirty = true;
     private boolean fallback;       // the aurora with the clock (no photos)
@@ -124,7 +128,7 @@ final class DreamView extends View implements Choreographer.FrameCallback, HomeD
     private long minute = -1;
     private String clock = "", date = "";
     private Paint datePaint, clockPaint, weatherPaint, weatherDim, quotePaint, stalePaint;
-    private Paint cornerDate, cornerQuote, cornerStale, cornerClock, labelPaint, metaPaint;
+    private Paint cornerDate, cornerQuote, cornerStale, cornerClock, labelPaint, metaPaint, brandTitle;
     private TextPaint titlePaint;
 
     private final Runnable tick = new Runnable() {
@@ -142,21 +146,31 @@ final class DreamView extends View implements Choreographer.FrameCallback, HomeD
 
     DreamView(Context c) {
         super(c);
+        skin = SkinPreferences.load(c);
+        fonts = Ui.fonts(c, skin);
+        skin.apply(theme, 1);
+        TITLE_W = skin.glass ? 1000 : 1100;
+        DATE_BASE = skin.glass ? 92 : 180;
+        CLOCK_TOP = skin.glass ? 120 : 240;
+        CLOCK_SIZE = skin.glass ? 200 : 144;
         data = HomeData.get(c);
         recs = Recs.get(c);
         Shaders.dream(scene.palette);
         scene.setMotion(0.4f, 0.32f);
         scene.applyPalette();
         content.setUseCompositingLayer(true, null);
-        try {
-            glassShader = new RuntimeShader(Shaders.GLASS_TEXT);
-            glassPaint.setShader(glassShader);
-        } catch (RuntimeException | LinkageError e) {   // Android 12: no AGSL
-            AppLog.w("glass clock unavailable: " + e.getMessage());
-            glassShader = null;
+        if (skin.glass) {
+            try {
+                glassShader = new RuntimeShader(Shaders.GLASS_TEXT);
+                glassPaint.setShader(glassShader);
+            } catch (RuntimeException | LinkageError e) {   // Android 12: no AGSL
+                AppLog.w("glass clock unavailable: " + e.getMessage());
+                glassShader = null;
+            }
         }
-        black.setColor(0xFF000000);
+        black.setColor(theme.BACKGROUND);
         shadowPaint.setColor(0xFF000000);
+        clockMixPaint.setXfermode(new PorterDuffXfermode(PorterDuff.Mode.ADD));
     }
 
     void start() {
@@ -193,6 +207,7 @@ final class DreamView extends View implements Choreographer.FrameCallback, HomeD
             if (s == null) continue;
             gone.add(s.image);
             gone.add(s.frost);
+            if (s.clockImage != null) gone.add(s.clockImage);
         }
         if (!gone.isEmpty()) handler.postDelayed(() -> { for (Bitmap b : gone) b.recycle(); }, 1000);
         current = incoming = prepared = null;
@@ -223,31 +238,41 @@ final class DreamView extends View implements Choreographer.FrameCallback, HomeD
         scene.setSize(w, h);
         content.setPosition(0, 0, w, h);
         chrome.setPosition(0, 0, w, h);
-        // Without photos (the clock over the aurora).
-        datePaint = Ui.text(Ui.semibold, 36 * k, 0xD9FFFFFF);
+        // Without photos: the clock and data over graphite.
+        datePaint = Ui.text(fonts.semibold, 36 * k, 0xD9FFFFFF);
         datePaint.setTextAlign(Paint.Align.CENTER);
-        clockPaint = Ui.numbers(Ui.thin, 280 * k, 0xF2FFFFFF);
+        clockPaint = fonts.numbers(skin.glass ? fonts.thin : fonts.medium, (skin.glass ? 280 : 220) * k, theme.FOCUS);
         clockPaint.setTextAlign(Paint.Align.CENTER);
         clockPaint.setLetterSpacing(-0.01f);
-        weatherPaint = Ui.numbers(Ui.medium, 30 * k, 0xC7FFFFFF);
-        weatherDim = Ui.numbers(Ui.regular, 28 * k, 0x80FFFFFF);
-        quotePaint = Ui.numbers(Ui.medium, 24 * k, 0x99FFFFFF);
-        stalePaint = Ui.text(Ui.regular, 20 * k, 0x59FFFFFF);
+        weatherPaint = fonts.numbers(fonts.medium, 30 * k, 0xC7FFFFFF);
+        weatherDim = fonts.numbers(fonts.regular, 28 * k, 0x80FFFFFF);
+        quotePaint = fonts.numbers(fonts.medium, 24 * k, 0x99FFFFFF);
+        stalePaint = Ui.text(fonts.regular, 20 * k, 0x59FFFFFF);
         stalePaint.setTextAlign(Paint.Align.CENTER);
-        // With photos: the corner (date, clock, prices) and the caption.
-        cornerDate = Ui.numbers(Ui.semibold, 30 * k, 0xEBFFFFFF);
-        cornerQuote = Ui.numbers(Ui.regular, 23 * k, 0xC7FFFFFF);
-        cornerStale = Ui.text(Ui.medium, 21 * k, 0x99FFFFFF);
-        cornerClock = Ui.numbers(Ui.displaySemibold, CLOCK_SIZE * k, 0xF2FFFFFF);
-        labelPaint = Ui.text(Ui.medium, 25 * k, 0xB8FFFFFF);
+        // With photos: the corner (date, clock, metrics) and the caption.
+        cornerDate = Ui.text(fonts.regular, 25 * k, theme.SECONDARY);
+        cornerQuote = fonts.numbers(fonts.regular, 24 * k, theme.TEXT);
+        cornerStale = Ui.text(fonts.regular, 21 * k, theme.MUTED);
+        cornerClock = fonts.numbers(fonts.medium, CLOCK_SIZE * k, theme.FOCUS);
+        brandTitle = Ui.text(fonts.semibold, 36 * k, theme.TEXT);
+        labelPaint = Ui.text(fonts.mono, 20 * k, theme.FOCUS);
         labelPaint.setLetterSpacing(0.1f);
-        titlePaint = new TextPaint(Ui.text(Ui.displayMedium, 76 * k, 0xFFFFFFFF));
+        titlePaint = new TextPaint(Ui.text(fonts.displayMedium, 44 * k, theme.TEXT));
         titlePaint.setLetterSpacing(0.005f);
-        metaPaint = Ui.text(Ui.medium, 29 * k, 0xC7FFFFFF);
+        metaPaint = Ui.text(fonts.regular, 26 * k, theme.SECONDARY);
         metaPaint.setLetterSpacing(0.014f);
-        for (Paint p : new Paint[] {cornerDate, cornerQuote, cornerStale, cornerClock, labelPaint, titlePaint, metaPaint}) {
-            p.setShadowLayer(18 * k, 0, 2 * k, 0x66000000);
+        if (skin.glass) {
+            cornerDate = fonts.numbers(fonts.semibold, 30 * k, 0xEBFFFFFF);
+            cornerQuote = fonts.numbers(fonts.regular, 23 * k, 0xD9FFFFFF);
+            cornerStale = Ui.text(fonts.medium, 21 * k, 0xB3FFFFFF);
+            cornerClock = fonts.numbers(fonts.displaySemibold, CLOCK_SIZE * k, 0xF2FFFFFF);
+            labelPaint = Ui.text(fonts.medium, 25 * k, 0xD9FFFFFF);
+            titlePaint = new TextPaint(Ui.text(fonts.displayMedium, 68 * k, 0xFFFFFFFF));
+            metaPaint = Ui.text(fonts.medium, 29 * k, 0xD9FFFFFF);
+            for (Paint p : new Paint[] {cornerDate, cornerQuote, cornerStale, cornerClock, labelPaint, titlePaint, metaPaint})
+                p.setShadowLayer(18 * k, 0, 2 * k, 0x66000000);
         }
+        // Text sits directly on graphite, separate from the artwork.
         glassFor = "";
         dirty = true;
         chromeDirty = true;
@@ -299,7 +324,8 @@ final class DreamView extends View implements Choreographer.FrameCallback, HomeD
             float[] light = new float[2];
             try {
                 images = Backdrop.photo(file, PW, PH, light);
-                images[0] = Backdrop.gpu(withScrims(images[0], light[0], light[1]));
+                if (skin.glass) images[0] = withScrims(images[0], light[0], light[1]);
+                images[0] = Backdrop.gpu(images[0]);
             } catch (Exception | OutOfMemoryError e) {
                 AppLog.w("screensaver: photo for “" + chosen.title + "”: " + e.getMessage());
             }
@@ -325,6 +351,7 @@ final class DreamView extends View implements Choreographer.FrameCallback, HomeD
     private Slide newSlide(Recs.Pick pick, Bitmap image, Bitmap frost, float lightCaption, float lightClock) {
         Slide s = new Slide(pick, image, frost, lightCaption, lightClock, slides++);
         if (w > 0) recordCaption(s);
+        prepareClock(s);
         return s;
     }
 
@@ -366,12 +393,15 @@ final class DreamView extends View implements Choreographer.FrameCallback, HomeD
 
     /** The photos the clock's glass shows (the current one and, during a crossfade, the incoming one). */
     private void bindPhotos() {
+        chromeDirty = true;
+        prepareClock(current);
+        prepareClock(incoming);
         if (glassShader == null || current == null) return;
         glassShader.setInputShader("imageA", current.shader);
         glassShader.setInputShader("imageB", incoming != null ? incoming.shader : current.shader);
     }
 
-    /** Photo position and scale now: zoom from 1 to 1.1 (or back) and a pan toward a corner, never showing an edge. */
+    /** The thumbnail stays fitted; its transition fades without cropping the edges. */
     private void place(Slide s, long up, float[] out) {
         float u = Ui.clamp((up - s.startedAt) / (float) (SHOW_MS + FADE_MS));
         float f = s.zoomIn ? u : 1 - u;
@@ -411,6 +441,7 @@ final class DreamView extends View implements Choreographer.FrameCallback, HomeD
 
     @Override protected void onDraw(Canvas canvas) {
         if (w == 0) return;
+        canvas.drawColor(theme.BACKGROUND);
         long up = clock();
         long now = System.currentTimeMillis();
         if (now / 60_000 != minute) {
@@ -433,11 +464,18 @@ final class DreamView extends View implements Choreographer.FrameCallback, HomeD
 
         place(current, up, placeA);
         float e = incoming == null ? 0 : fadeIn(up - incoming.startedAt, FADE_MS);
+        canvas.save();
+        if (!skin.glass) {
+            canvas.translate(MARGIN * k, 220 * k);
+            canvas.scale(1100f / 1920, 1100f / 1920);
+            canvas.clipRect(0, 0, w, h);
+        }
         drawPhoto(canvas, current, placeA, first);
         if (incoming != null) {
             place(incoming, up, placeB);
             drawPhoto(canvas, incoming, placeB, e);
         }
+        canvas.restore();
 
         if (chromeDirty) recordChrome();
         chrome.setAlpha(first);
@@ -451,11 +489,44 @@ final class DreamView extends View implements Choreographer.FrameCallback, HomeD
         return t * t * (3 - 2 * t);
     }
 
-    /**
-     * Black scrims where there is text, stronger where the photo is bright, painted once onto the photo itself (in the
-     * background): each frame draws only the photo (the TV's GPU feels every full-screen layer). With the slow zoom,
-     * they move a little along with the photo, which makes no difference to the text.
-     */
+    // MARK: - Identity, solid clock, channel metrics and weather
+
+    private void recordChrome() {
+        if (skin.glass) { recordGlassChrome(); return; }
+        RecordingCanvas c = chrome.beginRecording(w, h);
+        try {
+            float right = RIGHT * k, left = 1280 * k;
+            Ui.brand(c, MARGIN * k, 76 * k, 54 * k);
+            c.drawText("ViktorKav", 158 * k, 120 * k, brandTitle);
+            c.drawText(date, right - cornerDate.measureText(date), DATE_BASE * k, cornerDate);
+            Rect ink = new Rect();
+            cornerClock.getTextBounds(clock, 0, clock.length(), ink);
+            c.drawText(clock, right - ink.right, CLOCK_TOP * k - ink.top, cornerClock);
+            if (Config.SHOW_CHANNEL_METRICS) {
+                ChannelFeed feed = data.channel();
+                for (int i = 0; i < 4; i++) {
+                    String label = Ui.tr(METRIC_PT[i], METRIC_EN[i]);
+                    float base = (450 + i * 64) * k;
+                    c.drawText(label, left, base, cornerStale);
+                    String value = feed.metricValue(i, true, Ui.en);
+                    c.drawText(value, right - cornerQuote.measureText(value), base, cornerQuote);
+                }
+                String source = TextUtils.ellipsize(HomeView.channelSourceText(feed), new TextPaint(cornerStale),
+                        right - left, TextUtils.TruncateAt.END).toString();
+                c.drawText(source, left, 724 * k, cornerStale);
+            }
+            HomeData.Weather wx = data.weather;
+            if (!Double.isNaN(wx.temp)) {
+                String weather = HomeData.degrees(wx.temp) + " · " + HomeData.condition(wx.code, wx.isDay);
+                c.drawText(TextUtils.ellipsize(weather, new TextPaint(cornerDate), right - left,
+                        TextUtils.TruncateAt.END).toString(), left, 820 * k, cornerDate);
+            }
+        } finally {
+            chrome.endRecording();
+        }
+        chromeDirty = false;
+    }
+
     private static Bitmap withScrims(Bitmap photo, float lightCaption, float lightClock) {
         int w = photo.getWidth(), h = photo.getHeight();
         Canvas c = new Canvas(photo);
@@ -496,9 +567,7 @@ final class DreamView extends View implements Choreographer.FrameCallback, HomeD
         return Math.max(base - 0.1f, Math.min(0.78f, base + (light - 0.3f) * 0.9f));
     }
 
-    // MARK: - Corner: date and weather, glass clock, prices
-
-    private void recordChrome() {
+    private void recordGlassChrome() {
         RecordingCanvas c = chrome.beginRecording(w, h);
         try {
             float right = RIGHT * k;
@@ -517,7 +586,7 @@ final class DreamView extends View implements Choreographer.FrameCallback, HomeD
             c.drawText(date, x - cornerDate.measureText(date), DATE_BASE * k, cornerDate);
 
             Glass g = glass;
-            if (g != null && glassShader != null) {
+            if (g != null && (glassShader != null || (current != null && current.clockImageFor == g && current.clockImage != null))) {
                 // The shadow under the glass: sets the digits apart from a bright photo.
                 shadowPaint.setAlpha(140);
                 c.drawBitmap(g.shadow, g.x, g.y + 6 * k, shadowPaint);
@@ -527,28 +596,16 @@ final class DreamView extends View implements Choreographer.FrameCallback, HomeD
                 c.drawText(clock, right - ink.right, CLOCK_TOP * k - ink.top, cornerClock);
             }
 
-            // Compact prices under the clock, right-aligned.
-            if (Config.SHOW_CRYPTO) {
+            // Two compact labeled rows fit under the clock without covering the caption.
+            if (Config.SHOW_CHANNEL_METRICS) {
+                ChannelFeed feed = data.channel();
                 float base = (CLOCK_TOP + Ui.cap(cornerClock) / k + QUOTES_GAP) * k;
-                float cap = Ui.cap(cornerQuote), gap = 7 * k, spacing = 26 * k;
-                int n = HomeData.coinCount();
-                String[] values = new String[n];
-                float[] glyphs = new float[n];
-                float total = spacing * (n - 1);
-                for (int i = 0; i < n; i++) {
-                    values[i] = HomeData.compact(data.prices[i]);
-                    glyphs[i] = Glyphs.width(getContext(), HomeData.COINS[i], cap);
-                    total += glyphs[i] + gap + cornerQuote.measureText(values[i]);
+                for (int row = 0; row < 2; row++) {
+                    String line = compactMetric(feed, row * 2) + "    ·    " + compactMetric(feed, row * 2 + 1);
+                    c.drawText(line, right - cornerQuote.measureText(line), base + row * 36 * k, cornerQuote);
                 }
-                float qx = right - total;
-                for (int i = 0; i < n; i++) {
-                    Glyphs.coin(getContext(), c, HomeData.COINS[i], qx + glyphs[i] / 2, base - cap / 2, cap, 0xA6FFFFFF);
-                    qx += glyphs[i] + gap;
-                    c.drawText(values[i], qx, base, cornerQuote);
-                    qx += cornerQuote.measureText(values[i]) + spacing;
-                }
-                String stale = HomeData.staleness(data.pricesAt, 5 * 60_000L);
-                if (!stale.isEmpty()) c.drawText(stale, right - total - 24 * k - cornerStale.measureText(stale), base, cornerStale);
+                String source = HomeView.channelSourceText(feed);
+                c.drawText(source, right - cornerStale.measureText(source), base + 77 * k, cornerStale);
             }
         } finally {
             chrome.endRecording();
@@ -558,7 +615,22 @@ final class DreamView extends View implements Choreographer.FrameCallback, HomeD
 
     private void drawGlass(Canvas c, float alpha, float e) {
         Glass g = glass;
-        if (g == null || glassShader == null || alpha <= 0.004f) return;
+        if (g == null || alpha <= 0.004f) return;
+        if (glassShader == null) {
+            boolean nextReady = incoming != null && incoming.clockImageFor == g && incoming.clockImage != null;
+            float mix = nextReady ? e : 0;
+            int save = c.saveLayer(g.x, g.y, g.x + g.cover.getWidth(), g.y + g.cover.getHeight(), null);
+            if (current != null && current.clockImageFor == g && current.clockImage != null) {
+                clockMixPaint.setAlpha(Math.round(255 * alpha * (1 - mix)));
+                c.drawBitmap(current.clockImage, g.x, g.y, clockMixPaint);
+            }
+            if (nextReady) {
+                clockMixPaint.setAlpha(Math.round(255 * alpha * mix));
+                c.drawBitmap(incoming.clockImage, g.x, g.y, clockMixPaint);
+            }
+            c.restoreToCount(save);
+            return;
+        }
         // The glass samples the frosted version (1/6 of the photo): same position, with the scale 6 times larger.
         float f = Backdrop.PHOTO_FROST;
         glassShader.setFloatUniform("placeA", placeA[0], placeA[1], placeA[2] * f);
@@ -576,7 +648,7 @@ final class DreamView extends View implements Choreographer.FrameCallback, HomeD
     /** Builds the glass clock's digits in the background (once a minute) and swaps them in when they're ready. */
     private void buildGlass(String text) {
         glassFor = text;
-        if (glassShader == null || text.isEmpty()) {
+        if (!skin.glass || text.isEmpty()) {
             chromeDirty = true;
             return;
         }
@@ -590,8 +662,52 @@ final class DreamView extends View implements Choreographer.FrameCallback, HomeD
             handler.post(() -> {
                 if (gen != generation || !text.equals(glassFor)) return;
                 glass = g;
-                glassShader.setInputShader("slope", nearest(g.slope));
-                glassShader.setInputShader("cover", nearest(g.cover));
+                if (glassShader != null) {
+                    glassShader.setInputShader("slope", nearest(g.slope));
+                    glassShader.setInputShader("cover", nearest(g.cover));
+                } else {
+                    prepareClock(current);
+                    prepareClock(incoming);
+                    prepareClock(prepared);
+                }
+                chromeDirty = true;
+                invalidate();
+            });
+        });
+    }
+
+    /** Android 12: rasterize refraction only when the photo or minute changes. */
+    private void prepareClock(Slide slide) {
+        Glass g = glass;
+        if (!skin.glass || glassShader != null || g == null || slide == null || slide.clockFor == g) return;
+        slide.clockFor = g;
+        final int gen = generation;
+        final int screenWidth = w;
+        final float refraction = 14 * k;
+        worker.execute(() -> {
+            if (gen != generation || slide.frost.isRecycled()) return;
+            Bitmap result;
+            try {
+                int width = g.cover.getWidth(), height = g.cover.getHeight();
+                int[] slopes = new int[width * height], cover = new int[width * height];
+                g.slope.getPixels(slopes, 0, width, 0, 0, width, height);
+                g.cover.getPixels(cover, 0, width, 0, 0, width, height);
+                int pw = slide.frost.getWidth(), ph = slide.frost.getHeight();
+                int[] pixels = new int[pw * ph];
+                slide.frost.getPixels(pixels, 0, pw, 0, 0, pw, ph);
+                int[] raster = GlassRaster.render(slopes, cover, width, height, pixels, pw, ph,
+                        g.x, g.y, (float) screenWidth / pw, refraction);
+                result = Bitmap.createBitmap(raster, width, height, Bitmap.Config.ARGB_8888);
+            } catch (RuntimeException | OutOfMemoryError error) {
+                AppLog.w("glass raster unavailable: " + error.getMessage());
+                return;
+            }
+            handler.post(() -> {
+                if (gen != generation || slide.clockFor != g) { result.recycle(); return; }
+                Bitmap previous = slide.clockImage;
+                slide.clockImage = result;
+                slide.clockImageFor = g;
+                if (previous != null) handler.postDelayed(previous::recycle, 1000);
                 chromeDirty = true;
                 invalidate();
             });
@@ -682,8 +798,8 @@ final class DreamView extends View implements Choreographer.FrameCallback, HomeD
                     .setMaxLines(2).setEllipsize(TextUtils.TruncateAt.END).setAlignment(Layout.Alignment.ALIGN_NORMAL)
                     .setIncludePad(false).build();
             float originY = titleBase - t.getLineBaseline(t.getLineCount() - 1);
-            float capTop = originY + t.getLineBaseline(0) - Ui.cap(titlePaint);
-            c.drawText(Recs.periodLabel(), x, capTop - 30 * k, labelPaint);
+            float labelBase = skin.glass ? originY + t.getLineBaseline(0) - Ui.cap(titlePaint) - 30 * k : 194 * k;
+            c.drawText(Ui.tr("SUAS INSCRIÇÕES · YOUTUBE", "YOUR SUBSCRIPTIONS · YOUTUBE"), x, labelBase, labelPaint);
             c.save();
             c.translate(x - Ui.leftBearing(titlePaint, title), originY);
             t.draw(c);
@@ -727,7 +843,7 @@ final class DreamView extends View implements Choreographer.FrameCallback, HomeD
             lastSky = up;
             scene.advance(timeOffset + t);
         }
-        scene.drawBackground(canvas);
+        if (skin.glass) scene.drawBackground(canvas); else canvas.drawColor(theme.BACKGROUND);
         if (dirty) {
             RecordingCanvas rc = content.beginRecording(w, h);
             try {
@@ -769,25 +885,25 @@ final class DreamView extends View implements Choreographer.FrameCallback, HomeD
             c.drawText(range, x, base, weatherDim);
         }
 
-        // Prices near the bottom edge: small white logo + value, all four on one line.
-        if (Config.SHOW_CRYPTO) {
-            float cap = Ui.cap(quotePaint), spacing = 56 * k, gap = 10 * k;
-            String[] values = new String[HomeData.coinCount()];
-            float total = spacing * (values.length - 1);
-            for (int i = 0; i < values.length; i++) {
-                values[i] = HomeData.price(data.prices[i]);
-                total += Glyphs.width(getContext(), HomeData.COINS[i], cap) + gap + quotePaint.measureText(values[i]);
+        if (Config.SHOW_CHANNEL_METRICS) {
+            ChannelFeed feed = data.channel();
+            float base = h - 126 * k;
+            for (int row = 0; row < 2; row++) {
+                String line = compactMetric(feed, row * 2) + "    ·    " + compactMetric(feed, row * 2 + 1);
+                c.drawText(line, cx - quotePaint.measureText(line) / 2, base + row * 38 * k, quotePaint);
             }
-            float x = cx - total / 2, base = h - 92 * k;
-            for (int i = 0; i < values.length; i++) {
-                float gw = Glyphs.width(getContext(), HomeData.COINS[i], cap);
-                Glyphs.coin(getContext(), c, HomeData.COINS[i], x + gw / 2, base - cap / 2, cap, 0x80FFFFFF);
-                x += gw + gap;
-                c.drawText(values[i], x, base, quotePaint);
-                x += quotePaint.measureText(values[i]) + spacing;
-            }
-            String stale = HomeData.staleness(data.pricesAt, 5 * 60_000L);
-            if (!stale.isEmpty()) c.drawText(Ui.tr("cotações de ", "prices from ") + stale, cx, base + 38 * k, stalePaint);
+            c.drawText(HomeView.channelSourceText(feed), cx, base + 78 * k, stalePaint);
         }
+    }
+
+    private static String compactMetric(ChannelFeed feed, int i) {
+        String label;
+        switch (i) {
+            case 0: label = Ui.tr("Inscritos", "Subscribers"); break;
+            case 1: label = Ui.tr("Views canal", "Channel views"); break;
+            case 2: label = Ui.tr("Views último vídeo", "Latest video views"); break;
+            default: label = Ui.tr("Likes último vídeo", "Latest video likes"); break;
+        }
+        return label + " " + feed.metricValue(i, true, Ui.en);
     }
 }

@@ -23,7 +23,7 @@ command -v "$JAVAC" >/dev/null 2>&1 || { echo "JDK not found. Install JDK 17 and
 # --- Settings: config.properties -> Config.java
 if [ ! -f config.properties ]; then
   cp config.example.properties config.properties
-  echo "Created config.properties: add your TMDB key and your city there (optional), then build again."
+  echo "Created config.properties with public defaults. City and optional feed: see README.md."
 fi
 prop() {
   local v
@@ -40,6 +40,7 @@ LAT="$(number latitude 40.7128)"
 LON="$(number longitude -74.0060)"
 ASSIST=false; [ "$(prop disable_assistant false)" = "true" ] && ASSIST=true
 CRYPTO=false; [ "$(prop show_crypto true)" = "true" ] && CRYPTO=true
+CHANNEL_METRICS=false; [ "$(prop show_channel_metrics false)" = "true" ] && CHANNEL_METRICS=true
 
 rm -rf out && mkdir -p out/gen/io/freemytv out/classes
 cat > out/gen/io/freemytv/Config.java <<EOF
@@ -59,6 +60,8 @@ final class Config {
     static final String TEMPERATURE = "$(prop temperature auto)";
     static final boolean DISABLE_ASSISTANT = $ASSIST;
     static final boolean SHOW_CRYPTO = $CRYPTO;
+    static final String CHANNEL_FEED_URL = "$(prop channel_feed_url '')";
+    static final boolean SHOW_CHANNEL_METRICS = $CHANNEL_METRICS;
 }
 EOF
 

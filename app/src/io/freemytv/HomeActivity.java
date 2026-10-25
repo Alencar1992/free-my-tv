@@ -41,6 +41,11 @@ public class HomeActivity extends Activity {
 
     @Override protected void onResume() {
         super.onResume();
+        if (home != null && home.skin != SkinPreferences.load(this)) {
+            home.destroy();
+            home = new HomeView(this);
+            setContentView(home);
+        }
         if (home != null) home.resume();
     }
 

@@ -24,6 +24,7 @@ import android.graphics.drawable.Drawable;
 import android.media.tv.TvContract;
 import android.media.tv.TvInputInfo;
 import android.media.tv.TvInputManager;
+import android.net.Uri;
 import android.provider.Settings;
 import android.util.DisplayMetrics;
 import android.view.View;
@@ -62,7 +63,7 @@ final class HomeApps {
 
     static final class Item {
         int kind;
-        String key, label, pkg, inputId, number;
+        String key, label, pkg, inputId, number, url;
         String symbol;      // icon for the shortcuts and special cards
         Bitmap tile;        // 16:9 card (apps and specials)
         Bitmap logo;        // colored logo with no background (shelf); null = use the card
@@ -79,19 +80,15 @@ final class HomeApps {
      * (YouTube); empty = the art's colors as they are. Last, a visual size tweak for the logo. Edit freely.
      */
     private static final String[][] SHELF = {
-        {"netflix", "Netflix", "com.netflix.ninja", "E50914", "", "1"},
         {"youtube", "YouTube", "com.google.android.youtube.tv", "FF0033", "play", "1"},
-        {"prime", "Prime Video", "com.amazon.amazonvideo.livingroom", "1A98FF", "tint", "0.96"},
-        {"disney", "Disney+", "com.disney.disneyplus", "1838C8", "", "1"},
-        {"max", "Max", "com.wbd.stream", "6C3BE0", "", "1.32"},
+        {"twitch", "Twitch", "tv.twitch.android.app", "9146FF", "", "1"},
         {"appletv", "Apple TV", "com.apple.atve.androidtv.appletv", "B8BCC6", "", "1.1"},
-        {"hulu", "Hulu", "com.hulu.livingroomplus", "1CE783", "", "1"},
-        {"paramount", "Paramount+", "com.cbs.ott", "0064FF", "", "1"},
-        {"peacock", "Peacock", "com.peacocktv.peacockandroid", "6E55DC", "", "1"},
+        {"prime", "Prime Video", "com.amazon.amazonvideo.livingroom", "1A98FF", "tint", "0.96"},
+        {"jellyfin", "Jellyfin", "org.jellyfin.androidtv", "AA5CC3", "", "1"},
+        {"stremio", "Stremio", "com.stremio.one", "7B5BF5", "", "1"},
         {"globoplay", "Globoplay", "com.globo.globotv", "FF5A1F", "tint", "1"},
-        {"spotify", "Spotify", "com.spotify.tv.android", "1DB954", "", "1"},
     };
-    private static final int MAX_SHELF = 8;
+    private static final int MAX_SHELF = 7;
     /** Live TV apps of some brands (the antenna's channels open through the standard Android request first). */
     static final String[] LIVE_TV_APPS = {"com.tcl.tv", "com.google.android.tv", "com.mediatek.wwtv.tvcenter", "com.sony.dtv.tvx"};
     /** Kept out of "All Apps" (only hidden, still installed). Add the ones your TV shows that you never use. */
@@ -308,8 +305,16 @@ final class HomeApps {
         Intent intent;
         switch (it.kind) {
             case APP:
-                intent = launchIntent(a.getPackageManager(), it.pkg);
-                if (intent != null) intent.addFlags(Intent.FLAG_ACTIVITY_RESET_TASK_IF_NEEDED);
+                intent = null;
+                if (it.url != null && it.url.matches("https://www\\.youtube\\.com/watch\\?v=[A-Za-z0-9_-]{11}")
+                        && "com.google.android.youtube.tv".equals(it.pkg)) {
+                    Intent video = new Intent(Intent.ACTION_VIEW, Uri.parse(it.url)).setPackage(it.pkg);
+                    if (video.resolveActivity(a.getPackageManager()) != null) intent = video;
+                }
+                if (intent == null) {
+                    intent = launchIntent(a.getPackageManager(), it.pkg);
+                    if (intent != null) intent.addFlags(Intent.FLAG_ACTIVITY_RESET_TASK_IF_NEEDED);
+                }
                 break;
             case LIVE_TV:
                 intent = liveTv(a);
@@ -332,6 +337,16 @@ final class HomeApps {
             a.startActivity(intent, ActivityOptions.makeScaleUpAnimation(from, x, y, Math.max(w, 1), Math.max(h, 1)).toBundle());
             return true;
         } catch (ActivityNotFoundException | SecurityException e) {
+            if (it.kind == APP && Intent.ACTION_VIEW.equals(intent.getAction())) {
+                Intent fallback = launchIntent(a.getPackageManager(), it.pkg);
+                if (fallback != null) {
+                    try {
+                        fallback.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK | Intent.FLAG_ACTIVITY_RESET_TASK_IF_NEEDED);
+                        a.startActivity(fallback, ActivityOptions.makeScaleUpAnimation(from, x, y, Math.max(w, 1), Math.max(h, 1)).toBundle());
+                        return true;
+                    } catch (ActivityNotFoundException | SecurityException ignored) { }
+                }
+            }
             AppLog.w("couldn't open " + it.label + ": " + e.getMessage());
             return false;
         }
