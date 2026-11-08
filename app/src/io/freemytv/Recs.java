@@ -39,7 +39,7 @@ final class Recs {
         String videoId, channelId, url, kind, title, backdrop, meta = "", app, pkg;
         public String id() { return videoId; }
         public String channel() { return channelId; }
-        boolean detailed;
+        boolean detailed, favorite, trailer;
     }
 
     interface Listener { void onRecs(); }
@@ -55,6 +55,9 @@ final class Recs {
     private static long statusReadAt;
     private final Context context;
     private final ChannelSource source;
+    private final DiscoverySource discovery;
+    private String discoveryRevision = "";
+    private boolean publicMode;
     private final ExecutorService io = Executors.newSingleThreadExecutor();
     private final Handler main = new Handler(Looper.getMainLooper());
     private final CopyOnWriteArrayList<Listener> listeners = new CopyOnWriteArrayList<>();
@@ -70,6 +73,9 @@ final class Recs {
     private Recs(Context c) {
         context = c;
         source = ChannelSource.get(c);
+        discovery = DiscoverySource.get(c);
+        publicMode = Personalization.publicDiscovery(c);
+        discovery.addListener(() -> { rebuild(); notifyListeners(); });
         io.execute(() -> {
             File dir = new File(context.getCacheDir(), "channel-thumbnails");
             File[] abandoned = dir.listFiles((directory, name) -> name.endsWith(".part"));
@@ -86,9 +92,38 @@ final class Recs {
     void addListener(Listener listener) { listeners.addIfAbsent(listener); }
     void removeListener(Listener listener) { listeners.remove(listener); }
     static boolean hasKey(Context c) { return !Config.CHANNEL_FEED_URL.trim().isEmpty(); }
-    String error() { return source.error(); }
-    String sourceRevision() { return lastFeed == null ? "" : lastFeed.recommendationsSource; }
+    boolean publicMode() { return publicMode; }
+    DiscoverySource.Status discoveryStatus() { return discovery.status(); }
+    String discoveryMessage() {
+        DiscoverySource.Status status=discovery.status();
+        if(status.loading) return Ui.tr("Buscando vídeos… ","Loading videos… ")+status.completed+"/"+status.total;
+        if(status.total==0) return Ui.tr("Escolha canais e apps em Personalizar home.","Choose channels and apps in Customize home.");
+        if(status.failed>0) return status.count>0 ? Ui.tr("Algumas fontes indisponíveis; exibindo dados salvos.","Some sources unavailable; showing saved data.") : Ui.tr("Fontes indisponíveis. Tente Atualizar na personalização.","Sources unavailable. Try Refresh in customization.");
+        if(status.stale) return Ui.tr("Vídeos salvos; aguardando atualização.","Saved videos; waiting for refresh.");
+        return status.count+Ui.tr(" vídeos disponíveis · OK abre no YouTube."," videos available · OK opens YouTube.");
+    }
+    String error() { return publicMode ? discoveryMessage() : source.error(); }
+    private List<PublicVideos.Source> publicSources() {
+        List<PublicVideos.Source> out=new ArrayList<>();
+        for(String ref:Personalization.favorites(context))out.add(new PublicVideos.Source(ref,"", "",false,false));
+        if(Personalization.trailersEnabled(context)) for(Personalization.Trailer t:Personalization.trailerSources(context))
+            out.add(new PublicVideos.Source(t.channel,t.label,t.pkg,true,t.official));
+        return out;
+    }
+    void settingsChanged() {
+        publicMode=Personalization.publicDiscovery(context);
+        discoveryRevision=""; lastFeed=null;
+        discovery.refresh(publicMode ? publicSources() : java.util.Collections.emptyList(),false);
+        rebuild(); notifyListeners();
+    }
+    void refreshPublicNow() {
+        if(Personalization.publicDiscovery(context)!=publicMode)settingsChanged();
+        if(publicMode)discovery.refresh(publicSources(),true);
+        else source.refreshIfStale();
+    }
+    String sourceRevision() { return publicMode ? "public:"+discovery.configurationRevision() : "legacy:"+(lastFeed == null ? "" : lastFeed.recommendationsSource); }
     boolean resetRecommendations() {
+        if(publicMode) return false;
         ChannelFeed feed = lastFeed;
         if (feed == null) return true;
         return feed.recommendationsStatus.equals("authorization_required")
@@ -114,6 +149,21 @@ final class Recs {
     }
 
     private void rebuild() {
+        if(publicMode) {
+            String revision=discovery.revision();
+            if(revision.equals(discoveryRevision)&&listEnglish==Ui.en) return;
+            List<Pick> list=new ArrayList<>();
+            DateTimeFormatter date=DateTimeFormatter.ofPattern(Ui.en ? "MMM d, yyyy" : "dd/MM/yyyy",
+                    Ui.en ? Locale.US : new Locale("pt","BR")).withZone(ZoneId.systemDefault());
+            for(PublicVideos.Video video:discovery.videos()) {
+                Pick pick=new Pick();pick.id=video.id.hashCode();pick.videoId=video.id;pick.channelId=video.channelId;
+                pick.url=video.url;pick.kind="video";pick.favorite=video.favorite;pick.trailer=video.trailer;
+                pick.title=video.title;pick.backdrop=video.thumbnail;pick.app="youtube";pick.pkg="com.google.android.youtube.tv";pick.detailed=true;
+                String service=video.serviceLabel.isEmpty() ? video.channelTitle : video.serviceLabel+" · "+video.channelTitle;
+                pick.meta=service+" · "+date.format(Instant.ofEpochMilli(video.publishedAt));list.add(pick);
+            }
+            picks=list; discoveryRevision=revision; listEnglish=Ui.en; return;
+        }
         ChannelFeed feed = source.feed();
         if (feed == lastFeed && listEnglish == Ui.en) return;
         List<Pick> list = new ArrayList<>();
@@ -143,6 +193,7 @@ final class Recs {
     List<Pick> now() { return now(null); }
     List<Pick> now(String kind) {
         List<Pick> out = new ArrayList<>();
+        if(publicMode) { List<Pick> all=catalog(kind);return new ArrayList<>(all.subList(0,Math.min(9,all.size()))); }
         if (lastFeed == null) return out;
         for (ChannelFeed.Video video : lastFeed.selectedRecommendations(kind, 9)) {
             for (Pick pick : picks) if (pick.videoId.equals(video.id)) {
@@ -155,7 +206,7 @@ final class Recs {
 
     List<Pick> catalog(String kind) {
         List<Pick> out = new ArrayList<>();
-        for (Pick pick : picks) if (kind == null || kind.equals(pick.kind)) out.add(pick);
+        for (Pick pick : picks) if (kind == null || (publicMode ? ("favorites".equals(kind) ? pick.favorite : "trailer".equals(kind) && pick.trailer) : kind.equals(pick.kind))) out.add(pick);
         return out;
     }
 
@@ -164,7 +215,9 @@ final class Recs {
     }
 
     void refreshIfStale() {
-        source.refreshIfStale();
+        if(Personalization.publicDiscovery(context)!=publicMode)settingsChanged();
+        if(publicMode)discovery.refresh(publicSources(),false);
+        else source.refreshIfStale();
         rebuild();
         // Home requests only its visible group and the next three thumbnails.
     }

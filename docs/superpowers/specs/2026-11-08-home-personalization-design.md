@@ -1,6 +1,6 @@
 # Home personalizada, YouTube e trailers — desenho
 
-Estado: proposta para aprovação. O ajuste pequeno de 30 para 15 segundos já foi preparado; as novas funções ainda não foram implementadas.
+Estado: aprovado pelo usuário. Extensão aprovada no mesmo pedido: aplicativo selecionado se eleva suavemente e mantém borda neon da paleta GTA VI.
 
 ## Objetivo e contexto
 O usuário instalou e testou pessoalmente a aparência GTA VI e a galeria na TCL/43S5K com Google TV / Android 14. Pediu galeria mais rápida, edição dos aplicativos da home, trailers em vídeo e vídeos recentes de seis canais indicados. Escolheu abrir os trailers no YouTube ao apertar OK e aceitou atualização do APK por cima, sem desinstalar ou apagar preferências.
@@ -61,3 +61,6 @@ Publicar o código, APK atualizado, certificado, hashes e instruções de atuali
 
 ## Decisões deixadas ao implementador
 Organização exata das classes e controles nativos, mensagens bilingues, layout que acomode o novo item sem sobreposição e tratamento de versões menores de XML/JSON. Presets só após verificar a origem; nenhuma conta ou dado do usuário deve ser presumido. Prefira a menor mudança que satisfaça essas condições e registre desvios.
+
+## Foco neon aprovado
+Na skin GTA VI, os aplicativos focados na home e em Todos os Apps ganham elevação/escala suave com a animação de mola existente e uma borda neon rosa/lilás/pêssego. Manter a borda enquanto focado, sem piscar continuamente e sem alocações pesadas em onDraw. Preservar contraste e comportamento das outras skins.

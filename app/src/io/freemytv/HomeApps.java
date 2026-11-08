@@ -111,22 +111,49 @@ final class HomeApps {
     static List<Item> shelf(Context c, boolean extract) {
         List<Item> items = new ArrayList<>();
         PackageManager pm = c.getPackageManager();
-        for (String[] d : SHELF) {
-            if (items.size() >= MAX_SHELF) break;
-            if (launchIntent(pm, d[2]) == null) continue;
+        for (String pkg : selectedPackages(c)) {
+            String[] known = null;
+            for (String[] d : SHELF) if (d[2].equals(pkg)) { known = d; break; }
             Item it = new Item();
             it.kind = APP;
-            it.key = d[0];
-            it.label = d[1];
-            it.pkg = d[2];
-            it.tile = appTile(c, d[0], d[2], 0xFF000000 | Integer.parseInt(d[3], 16));
-            it.logo = shelfLogo(c, d[0], d[2], d[4], extract);
-            if (it.logo != null) it.logoInk = ink(it.logo);
-            it.logoDark = ownLogoCached(c, d[0] + "-dark");
-            it.logoScale = Float.parseFloat(d[5]);
+            it.pkg = pkg;
+            if (known != null) {
+                String[] d = known;
+                it.key = d[0]; it.label = d[1];
+                it.tile = appTile(c,d[0],pkg,0xFF000000 | Integer.parseInt(d[3],16));
+                it.logo = shelfLogo(c,d[0],pkg,d[4],extract);
+                if(it.logo != null) it.logoInk=ink(it.logo);
+                it.logoDark=ownLogoCached(c,d[0]+"-dark");
+                it.logoScale=Float.parseFloat(d[5]);
+            } else {
+                it.key=pkg;
+                try { it.label=String.valueOf(pm.getApplicationLabel(pm.getApplicationInfo(pkg,0))); }
+                catch(PackageManager.NameNotFoundException e) { continue; }
+                it.tile=appTile(c,null,pkg,0);
+            }
             items.add(it);
         }
         return items;
+    }
+
+    /** Metadata only: safe to query on the editor's background worker without decoding art. */
+    static List<Item> editableApps(Context c) {
+        PackageManager pm=c.getPackageManager();
+        List<Item> out=new ArrayList<>(); Set<String> seen=new HashSet<>();
+        Intent query=new Intent(Intent.ACTION_MAIN).addCategory(Intent.CATEGORY_LEANBACK_LAUNCHER);
+        for(ResolveInfo ri:pm.queryIntentActivities(query,0)) {
+            ActivityInfo ai=ri.activityInfo;
+            if(ai==null||!ai.enabled||!ai.applicationInfo.enabled||ai.packageName.equals(c.getPackageName())||!seen.add(ai.packageName))continue;
+            Item item=new Item();item.kind=APP;item.key=ai.packageName;item.pkg=ai.packageName;item.label=String.valueOf(ri.loadLabel(pm));
+            out.add(item);
+        }
+        Collections.sort(out,(a,b)->a.label.compareToIgnoreCase(b.label));
+        return out;
+    }
+    static List<String> selectedPackages(Context c) {
+        List<String> defaults=new ArrayList<>(); for(String[] d:SHELF)defaults.add(d[2]);
+        Set<String> available=new HashSet<>();for(Item item:editableApps(c))available.add(item.pkg);
+        return AppOrder.visible(Personalization.appOrder(c),defaults,available);
     }
 
     /** Live TV, the HDMI inputs with a device sending a signal, and All Apps. */
@@ -271,10 +298,8 @@ final class HomeApps {
     static List<Item> others(Context c) {
         PackageManager pm = c.getPackageManager();
         Set<String> skip = new HashSet<>();
-        for (String[] d : SHELF) skip.add(d[2]);
-        skip.addAll(java.util.Arrays.asList(LIVE_TV_APPS));
+        skip.addAll(selectedPackages(c));
         skip.add(c.getPackageName());
-        skip.addAll(HIDDEN);
         Intent query = new Intent(Intent.ACTION_MAIN).addCategory(Intent.CATEGORY_LEANBACK_LAUNCHER);
         List<Item> items = new ArrayList<>();
         Set<String> seen = new HashSet<>();

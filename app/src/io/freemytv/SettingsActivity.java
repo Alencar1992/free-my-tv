@@ -46,6 +46,14 @@ public class SettingsActivity extends Activity {
     @Override protected void onResume() {
         super.onResume();
         view.resume();
+        if (getIntent().hasExtra(PersonalizationActivity.EXTRA_IMPORT)) {
+            String payload;
+            try { payload=getIntent().getStringExtra(PersonalizationActivity.EXTRA_IMPORT); }
+            catch(RuntimeException e) { payload=null; }
+            getIntent().removeExtra(PersonalizationActivity.EXTRA_IMPORT);
+            startActivity(new Intent(this,PersonalizationActivity.class).putExtra(PersonalizationActivity.EXTRA_IMPORT,payload));
+            return;
+        }
         // From ADB: am start -n io.freemytv/.SettingsActivity --ez screensaver true (straight to the preview).
         if (preview == null && getIntent().getBooleanExtra("screensaver", false)) {
             getIntent().removeExtra("screensaver");
@@ -102,7 +110,7 @@ public class SettingsActivity extends Activity {
 
     static final class SettingsView extends View implements Choreographer.FrameCallback {
         private static final int MAIN = 0, HOME_CHOICE = 1, SKIN_CHOICE = 2;
-        private static final float LIST_X = 1000, LIST_R = 1824, LIST_TOP = 186, ROW_H = 74, ROW_GAP = 8, CHOICE_H = 104;
+        private static final float LIST_X = 1000, LIST_R = 1824, LIST_TOP = 150, ROW_H = 64, ROW_GAP = 6, CHOICE_H = 104;
         private static final int AMBER = 0xFFFFC266;
         private Skin skin;
         private Ui.Fonts fonts;
@@ -189,7 +197,7 @@ public class SettingsActivity extends Activity {
                     return Ui.tr("Início, ", "Home Screen, ") + value;
                 }
                 if (row == 1) return Ui.tr("Aparência, ", "Appearance, ") + skinName(skin);
-                return row == 2 ? Ui.tr("Tela de Descanso, ver agora", "Screensaver, preview") : Ui.tr("Ajustes da TV", "TV Settings");
+                return row == 2 ? Ui.tr("Tela de Descanso, ver agora", "Screensaver, preview") : row == 3 ? Ui.tr("Personalizar home", "Customize home") : Ui.tr("Ajustes da TV", "TV Settings");
             }
             if (screen == SKIN_CHOICE) {
                 Skin option = Skin.values()[row];
@@ -212,6 +220,7 @@ public class SettingsActivity extends Activity {
             refreshAppearance();
             if (running) return;
             running = true;
+            Recs.get(getContext()).refreshIfStale();
             startedAt = SystemClock.uptimeMillis();
             lastNanos = 0;
             handler.post(poll);
@@ -274,7 +283,7 @@ public class SettingsActivity extends Activity {
         }
 
         private int rowCount() {
-            return screen == MAIN ? 4 : screen == SKIN_CHOICE ? Skin.values().length : 2;
+            return screen == MAIN ? 5 : screen == SKIN_CHOICE ? Skin.values().length : 2;
         }
 
         @Override protected void onDraw(Canvas c) {
@@ -313,9 +322,9 @@ public class SettingsActivity extends Activity {
             boolean working = busy();
             String busyText = state.optString("busy");
             String mode = freeActive() ? "Free My TV" : Ui.tr("Original", "Original");
-            String[] labels = {Ui.tr("Início", "Home Screen"), Ui.tr("Aparência", "Appearance"), Ui.tr("Tela de Descanso", "Screensaver"), Ui.tr("Ajustes da TV", "TV Settings")};
-            String[] values = {working ? "" : mode, skinName(skin), Ui.tr("Ver agora", "Preview"), ""};
-            for (int i = 0; i < 4; i++) {
+            String[] labels = {Ui.tr("Início", "Home Screen"), Ui.tr("Aparência", "Appearance"), Ui.tr("Tela de Descanso", "Screensaver"), Ui.tr("Personalizar home", "Customize home"), Ui.tr("Ajustes da TV", "TV Settings")};
+            String[] values = {working ? "" : mode, skinName(skin), Ui.tr("Ver agora", "Preview"), "", ""};
+            for (int i = 0; i < 5; i++) {
                 float y = (LIST_TOP + i * (ROW_H + ROW_GAP)) * k;
                 rowRect.set(LIST_X * k, y, LIST_R * k, y + ROW_H * k);
                 float f = drawRowBackground(c, i);
@@ -324,7 +333,7 @@ public class SettingsActivity extends Activity {
                 float base = rowRect.centerY() + Ui.halfCap(rowLabel);
                 c.drawText(labels[i], rowRect.left + 30 * k, base, rowLabel);
                 float right = rowRect.right - 30 * k;
-                if (i == 3) {
+                if (i >= 3) {
                     float cw = Symbols.width(getContext(), "chevron_right", 22 * k);
                     Symbols.draw(getContext(), c, "chevron_right", right - cw / 2, rowRect.centerY(), 22 * k, blend(theme.MUTED, theme.ON_FOCUS, f));
                 } else if (i == 0 && working) {
@@ -342,7 +351,7 @@ public class SettingsActivity extends Activity {
                 }
             }
 
-            float y = (LIST_TOP + 4 * (ROW_H + ROW_GAP) + 46) * k;
+            float y = (LIST_TOP + 5 * (ROW_H + ROW_GAP) + 46) * k;
             String error = state.optString("error");
             if (working && (busyText.contains("Permitir") || busyText.contains("Allow"))) {
                 c.drawText(Ui.tr("Na TV: marque “Sempre permitir” e aperte OK.", "On the TV: tick “Always allow” and press OK."),
@@ -379,6 +388,13 @@ public class SettingsActivity extends Activity {
             else subscriptionsLine = count > 0
                     ? Ui.tr("Inscrições: " + count + " vídeos e lives recentes.", "Subscriptions: " + count + " recent videos and streams.")
                     : Ui.tr("Inscrições: nenhum vídeo recente.", "Subscriptions: no recent videos.");
+            if(Personalization.publicDiscovery(getContext())) {
+                Recs current=Recs.get(getContext());
+                subscriptionsLine=current.discoveryMessage();
+                DiscoverySource.Status publicStatus=current.discoveryStatus();
+                subscriptionsTimestamp=dataTimestamp(publicStatus.updatedAt,publicStatus.stale);
+                return;
+            }
             // The server adapts subscription cadence to quota; metric TTL must not age this snapshot.
             subscriptionsTimestamp = dataTimestamp(recs.optLong("recommendationsAt"), recs.optBoolean("recommendationsStale", true));
         }
@@ -621,6 +637,8 @@ public class SettingsActivity extends Activity {
             } else if (focus == 2) {
                 pause();
                 activity.showPreview();
+            } else if (focus == 3) {
+                activity.startActivity(new Intent(activity,PersonalizationActivity.class));
             } else {
                 activity.startActivity(new Intent(Settings.ACTION_SETTINGS).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK));
             }

@@ -84,6 +84,9 @@ final class HomeView extends ViewGroup implements Choreographer.FrameCallback, H
     private static final int L_INK = 0xFF1D1D1F, L_DIM = 0xFF6E6E73, L_FAINT = 0xFF8E8E93;
     private static final String[] TABS = {"Recentes", "Vídeos", "Lives"};
     private static final String[] TABS_EN = {"Recent", "Videos", "Live"};
+    private static final String[] PUBLIC_TABS = {"Recentes", "YouTube", "Trailers"};
+    private static final String[] PUBLIC_TABS_EN = {"Recent", "YouTube", "Trailers"};
+    private static final String[] PUBLIC_KIND = {null, "favorites", "trailer"};
     private static final String[] TAB_KIND = {null, "video", "live"};
     private static final int Z_TOP = 4, Z_CARDS = 5;
 
@@ -226,6 +229,10 @@ final class HomeView extends ViewGroup implements Choreographer.FrameCallback, H
     private final Paint shadowDeep = new Paint(Paint.ANTI_ALIAS_FLAG);
     private final Paint halo = new Paint(Paint.ANTI_ALIAS_FLAG);
     private final Paint border = new Paint(Paint.ANTI_ALIAS_FLAG);
+    private final LinearGradient neonGradient = new LinearGradient(0,0,1,1,
+            new int[]{0xFFFF68BF,0xFFC9A0FF,0xFFFFD6A3},null,Shader.TileMode.CLAMP);
+    private final android.graphics.Matrix neonMatrix = new android.graphics.Matrix();
+    private final Paint neonRim = new Paint(Paint.ANTI_ALIAS_FLAG);
     private final Paint rim = new Paint(Paint.ANTI_ALIAS_FLAG);
     private final Paint sheen = new Paint(Paint.ANTI_ALIAS_FLAG);
     private final Paint veil = new Paint(Paint.ANTI_ALIAS_FLAG);
@@ -417,7 +424,7 @@ final class HomeView extends ViewGroup implements Choreographer.FrameCallback, H
 
     /** Starting state (Home pressed while the home screen is showing): first app focused, drawer and sheet closed. */
     void reset(boolean animated) {
-        zone = Z_SHELF;
+        zone = shelfZone();
         shelfIndex = 0;
         cardIndex = 0;
         sheetOpen = false;
@@ -447,8 +454,13 @@ final class HomeView extends ViewGroup implements Choreographer.FrameCallback, H
         lightButtons.add(HomeApps.action(HomeApps.SETTINGS, "settings", Ui.tr("Configurações", "Settings"), "settings"));
     }
 
-    private static String[] tabs() {
-        return Ui.en ? TABS_EN : TABS;
+    private String[] tabs() {
+        return recs.publicMode() ? (Ui.en ? PUBLIC_TABS_EN : PUBLIC_TABS) : (Ui.en ? TABS_EN : TABS);
+    }
+    private String tabKind() { return recs.publicMode() ? PUBLIC_KIND[tab] : TAB_KIND[tab]; }
+    private int shelfZone() {
+        if(shelf.isEmpty()) { topIndex=5; return Z_TOP; }
+        return Z_SHELF;
     }
 
     @Override public void onData() {
@@ -461,6 +473,8 @@ final class HomeView extends ViewGroup implements Choreographer.FrameCallback, H
     }
 
     @Override public void onRecs() {
+        updateMetrics();
+        layoutLight();
         updatePicks();
     }
 
@@ -586,6 +600,7 @@ final class HomeView extends ViewGroup implements Choreographer.FrameCallback, H
         halo.setMaskFilter(new BlurMaskFilter(22 * k, BlurMaskFilter.Blur.NORMAL));
         border.setStyle(Paint.Style.STROKE);
         border.setStrokeWidth(2 * k);
+        neonRim.setStyle(Paint.Style.STROKE);
         rim.setStyle(Paint.Style.STROKE);
         rim.setStrokeWidth(3 * k);
     }
@@ -1004,7 +1019,7 @@ final class HomeView extends ViewGroup implements Choreographer.FrameCallback, H
                 if (list.get(i).key.equals(focusedKey)) index = i;   // a device came on: keep focus on the same button
             }
             statusIndex = index;
-            if (zone == Z_STATUS && list.isEmpty()) zone = Z_SHELF;
+            if (zone == Z_STATUS && list.isEmpty()) zone = shelfZone();
             aim(statusFocus, zone == Z_STATUS ? statusIndex : -1, true);   // only the capsule's springs
             statusDirty = true;
         }
@@ -1048,6 +1063,7 @@ final class HomeView extends ViewGroup implements Choreographer.FrameCallback, H
         boolean same = list.size() == shelf.size();
         for (int i = 0; same && i < list.size(); i++) same = list.get(i).key.equals(shelf.get(i).key);
         shelf = list;
+        if(shelf.isEmpty() && zone==Z_SHELF) zone=shelfZone();
         if (!same || tileFocus.length != list.size()) {
             tileFocus = new Spring[list.size()];
             tileRects = new RectF[list.size()];
@@ -1119,7 +1135,13 @@ final class HomeView extends ViewGroup implements Choreographer.FrameCallback, H
         drawerSource = cardDim == null || metricsCard.width() <= 0 ? metricsSource
                 : TextUtils.ellipsize(metricsSource, new TextPaint(cardDim), Math.max(1, metricsCard.width() - 68 * k),
                         TextUtils.TruncateAt.END).toString();
-        if (Config.CHANNEL_FEED_URL.trim().isEmpty()) {
+        if(recs.publicMode()) {
+            DiscoverySource.Status state=recs.discoveryStatus();
+            emptyTitle=state.loading ? Ui.tr("Buscando vídeos públicos", "Loading public videos")
+                    : state.failed>0 ? Ui.tr("Fontes indisponíveis", "Sources unavailable")
+                    : Ui.tr("Nenhum vídeo nesta aba", "No videos in this tab");
+            emptyDetail=recs.discoveryMessage();
+        } else if (Config.CHANNEL_FEED_URL.trim().isEmpty()) {
             emptyTitle = Ui.tr("Feed opcional não configurado", "Optional feed is not configured");
             emptyDetail = Ui.tr("Apps e skins já funcionam. Configure seu servidor para ver as inscrições.",
                     "Apps and skins are ready. Configure your server to see subscriptions.");
@@ -1210,7 +1232,7 @@ final class HomeView extends ViewGroup implements Choreographer.FrameCallback, H
         float f = tileFocus[i].value, fc = Ui.clamp(f), s = 1 + FOCUS_GROW * f;
         RectF base = tileRects[i];
         float bw = base.width(), bh = base.height(), r0 = TILE_RADIUS * k;
-        float cx = base.centerX(), cy = base.centerY();
+        float cx = base.centerX(), cy = base.centerY() - (skin==Skin.GTA_VI ? 14*k*f : 0);
         cell.set(cx - bw * s / 2, cy - bh * s / 2, cx + bw * s / 2, cy + bh * s / 2);
         float r = r0 * s;
         // Shadow at the resting icon size, enlarged by the transform (so the blur stays cached): short at rest, deep
@@ -1249,10 +1271,24 @@ final class HomeView extends ViewGroup implements Choreographer.FrameCallback, H
             c.restore();
         }
         if (fc > 0.01f) {
-            rim.setShader(null);
-            rim.setColor(Ui.alpha(theme.FOCUS, fc));
-            c.drawRoundRect(cell, r, r, rim);
+            if(skin==Skin.GTA_VI) drawNeon(c,cell,r,fc);
+            else {
+                rim.setShader(null);
+                rim.setColor(Ui.alpha(theme.FOCUS, fc));
+                c.drawRoundRect(cell, r, r, rim);
+            }
         }
+    }
+
+    /** Cached gradient and three narrow strokes: stationary neon, no blur or frame allocations. */
+    private void drawNeon(Canvas c,RectF box,float radius,float focus) {
+        neonMatrix.setScale(box.width(),box.height());
+        neonMatrix.postTranslate(box.left,box.top);
+        neonGradient.setLocalMatrix(neonMatrix);
+        neonRim.setShader(neonGradient);
+        neonRim.setStrokeWidth(11*k);neonRim.setAlpha(Math.round(35*focus));c.drawRoundRect(box,radius,radius,neonRim);
+        neonRim.setStrokeWidth(7*k);neonRim.setAlpha(Math.round(75*focus));c.drawRoundRect(box,radius,radius,neonRim);
+        neonRim.setStrokeWidth(3*k);neonRim.setAlpha(Math.round(255*focus));c.drawRoundRect(box,radius,radius,neonRim);
     }
 
     /**
@@ -1374,7 +1410,7 @@ final class HomeView extends ViewGroup implements Choreographer.FrameCallback, H
     private void closeDrawer() {
         drawerOpen = false;
         drawer.target = 0;
-        zone = Z_SHELF;
+        zone = shelfZone();
         for (Spring f : drawerFocus) f.snap(0);   // the drawer goes away: its focus doesn't need to animate
         if (!shelf.isEmpty() && drawerIndex < drawerRects.length) shelfIndex = nearest(tileRects, drawerRects[drawerIndex].centerX());
     }
@@ -1435,7 +1471,7 @@ final class HomeView extends ViewGroup implements Choreographer.FrameCallback, H
         HomeApps.Item it = drawerItems.get(i);
         float f = Ui.clamp(drawerFocus[i].value), s = 1 + 0.07f * f;
         RectF base = drawerRects[i];
-        float cx = base.centerX(), cy = base.centerY();
+        float cx = base.centerX(), cy = base.centerY() - (skin==Skin.GTA_VI ? 14*k*f : 0);
         cell.set(cx - base.width() * s / 2, cy - base.height() * s / 2, cx + base.width() * s / 2, cy + base.height() * s / 2);
         float r = (skin.glass ? 24 : skin.radius) * k * s;
         if (f > 0.01f) {
@@ -1631,7 +1667,7 @@ final class HomeView extends ViewGroup implements Choreographer.FrameCallback, H
     /** 16:9 sheet card. Focused (the shelf's subtle focus): it grows, with a shadow, a soft sheen and a thin border. */
     private void drawCard(Canvas c, Bitmap image, RectF base, float radius, float f, float grow) {
         float s = 1 + grow * f;
-        float cx = base.centerX(), cy = base.centerY();
+        float cx = base.centerX(), cy = base.centerY() - (skin==Skin.GTA_VI ? 14*k*f : 0);
         cell.set(cx - base.width() * s / 2, cy - base.height() * s / 2, cx + base.width() * s / 2, cy + base.height() * s / 2);
         float r = radius * s;
         float fc = Ui.clamp(f);
@@ -1659,11 +1695,14 @@ final class HomeView extends ViewGroup implements Choreographer.FrameCallback, H
         border.setColor(0x14FFFFFF);
         c.drawRoundRect(cell, r, r, border);
         if (f > 0.01f) {
-            rim.setShader(null);
-            rim.setColor(Ui.alpha(theme.FOCUS, fc));
-            rim.setStrokeWidth(1.5f * k);
-            c.drawRoundRect(cell, r, r, rim);
-            rim.setStrokeWidth(3 * k);
+            if(skin==Skin.GTA_VI) drawNeon(c,cell,r,fc);
+            else {
+                rim.setShader(null);
+                rim.setColor(Ui.alpha(theme.FOCUS, fc));
+                rim.setStrokeWidth(1.5f * k);
+                c.drawRoundRect(cell, r, r, rim);
+                rim.setStrokeWidth(3 * k);
+            }
         }
     }
 
@@ -1830,7 +1869,7 @@ final class HomeView extends ViewGroup implements Choreographer.FrameCallback, H
             closeDrawer();
             retarget(false);
         } else if (zone != Z_SHELF) {
-            zone = Z_SHELF;
+            zone = shelfZone();
             retarget(false);
         } else {
             return;
@@ -1872,7 +1911,7 @@ final class HomeView extends ViewGroup implements Choreographer.FrameCallback, H
                     zone = Z_STATUS;
                     statusIndex = 0;
                 } else {
-                    zone = Z_SHELF;
+                    zone = shelfZone();
                 }
                 break;
             case Z_STATUS:
@@ -1884,7 +1923,7 @@ final class HomeView extends ViewGroup implements Choreographer.FrameCallback, H
                     if (hero != null && hero.button) {
                         zone = Z_HERO;
                     } else {
-                        zone = Z_SHELF;
+                        zone = shelfZone();
                         if (!shelf.isEmpty()) shelfIndex = nearest(tileRects, statusRects[statusIndex].centerX());
                     }
                 } else {
@@ -2185,13 +2224,13 @@ final class HomeView extends ViewGroup implements Choreographer.FrameCallback, H
         String source = recs.sourceRevision();
         if (recs.resetRecommendations() || !source.equals(railSource)) videoRail.clear();
         railSource = source;
-        videoRail.merge(recs.catalog(TAB_KIND[tab]));
+        videoRail.merge(recs.catalog(tabKind()));
         List<Recs.Pick> list = videoRail.current();
         boolean changed = !samePicks(list, cards);
         if (changed) {
             cardIndex = Math.min(cardIndex, Math.max(0, list.size() - 1));
             if (zone == Z_CARDS && list.isEmpty()) {
-                zone = Z_SHELF;
+                zone = shelfZone();
                 retarget(false);
             }
         }
@@ -2496,7 +2535,7 @@ final class HomeView extends ViewGroup implements Choreographer.FrameCallback, H
                     if (dx < 0) cardIndex = Math.max(0, cards.size() - 1);
                 } else if (dy < 0) { zone = Z_TOP; topIndex = tab; }
                 else {
-                    zone = Z_SHELF;
+                    if(shelf.isEmpty())openDrawer(); else zone = shelfZone();
                     if (!shelf.isEmpty()) shelfIndex = nearest(tileRects, tileRects.length, cardRects[cardIndex].centerX());
                 }
                 break;
@@ -2508,7 +2547,7 @@ final class HomeView extends ViewGroup implements Choreographer.FrameCallback, H
                     topIndex = next;
                     if (topIndex < 3) selectTab(topIndex);
                 } else if (dy > 0) {
-                    if (cards.isEmpty()) zone = Z_SHELF;
+                    if (cards.isEmpty()) { if(shelf.isEmpty())openDrawer(); else zone = shelfZone(); }
                     else {
                         zone = Z_CARDS;
                         cardIndex = nearestCard(topRects[topIndex].centerX());
