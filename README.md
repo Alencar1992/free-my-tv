@@ -1,3 +1,17 @@
+# Free My TV — aparência GTA VI
+
+Personalização para Android TV / Google TV, baseada na branch **viktorkav** de [ViktorKav/free-my-tv](https://github.com/viktorkav/free-my-tv), que preserva o Free My TV original de **Simba / simbasjungles e contribuidores**. A licença MIT e os créditos originais permanecem incluídos.
+
+**[Baixar APK GTA VI](https://github.com/Alencar1992/free-my-tv-gta-vi/releases/tag/v1.7.0-gta.1)** · **[Instalação, assinatura e retorno a Original](INSTRUCOES-INSTALACAO.md)** · [Fontes das imagens](app/assets/wallpapers/SOURCES.md)
+
+A terceira aparência **GTA VI** acrescenta fundo fixo oficial de Vice City, roxo/lilás/rosa com foco pêssego, títulos fortes e rótulos condensados. O descanso dessa aparência tem **11 capturas oficiais locais**, com Leonida, carros, Jason, Lucia e outros personagens, logo e relógio; troca a cada 30 segundos com transição de 3 segundos. As duas skins anteriores continuam disponíveis e o feed permanece opcional e desativado nos defaults públicos.
+
+Versão experimental `1.7.0-gta.1` (`versionCode 10`), Android 12+. Testes de código e build foram executados; o teste físico na TCL/43S5K com Android 14 está pendente. A instalação e a assinatura do app presente na TV ainda precisam ser verificadas. O APK tem assinatura própria: leia o guia antes de atualizar ou desinstalar.
+
+A personalização não é afiliada à Rockstar Games / Take-Two. Imagens e marcas do jogo pertencem aos respectivos titulares e não são relicenciadas como MIT. Fontes usadas têm suas licenças preservadas; a fonte proprietária da Rockstar não é distribuída.
+
+---
+
 # Free My TV — versão ViktorKav
 
 Minha adaptação do **[Free My TV, criado por Simba / simbasjungles](https://github.com/simbasjungles/free-my-tv)**: uma tela inicial para Google TV e Android TV, com duas skins, atalhos de aplicativos e um feed opcional das suas inscrições do YouTube. O projeto original é distribuído sob a licença MIT; este fork preserva seus créditos e sua base.

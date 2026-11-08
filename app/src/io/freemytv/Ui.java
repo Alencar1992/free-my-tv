@@ -27,7 +27,7 @@ final class Ui {
     static Typeface thin, light, displayMedium, displaySemibold, regular, medium, semibold, mono;
     private static Drawable brand;
     private static boolean loaded;
-    private static Fonts channelFonts, glassFonts;
+    private static Fonts channelFonts, glassFonts, gameFonts;
     private static final Rect BOUNDS = new Rect();
     private static final RectF OVAL = new RectF();
 
@@ -35,7 +35,7 @@ final class Ui {
         if (loaded) return;
         loaded = true;
         AssetManager a = c.getAssets();
-        channelFonts = new Fonts(a, false);
+        channelFonts = new Fonts(a, Skin.VIKTORKAV);
         thin = channelFonts.thin; light = channelFonts.light;
         displayMedium = channelFonts.displayMedium; displaySemibold = channelFonts.displaySemibold;
         regular = channelFonts.regular; medium = channelFonts.medium;
@@ -61,26 +61,32 @@ final class Ui {
 
     static synchronized Fonts fonts(Context c, Skin skin) {
         init(c);
+        if (skin == Skin.GTA_VI) {
+            if (gameFonts == null) gameFonts = new Fonts(c.getAssets(), skin);
+            return gameFonts;
+        }
         if (!skin.glass) return channelFonts;
-        if (glassFonts == null) glassFonts = new Fonts(c.getAssets(), true);
+        if (glassFonts == null) glassFonts = new Fonts(c.getAssets(), skin);
         return glassFonts;
     }
 
     /** Font sets are immutable: a paused Home never inherits fonts from another view. */
     static final class Fonts {
         final Typeface thin, light, displayMedium, displaySemibold, regular, medium, semibold, mono;
-        private final boolean glass;
-        Fonts(AssetManager a, boolean glass) {
-            this.glass = glass;
-            String path = glass ? "fonts/InterVariable.ttf" : FONT;
+        private final boolean proportional;
+        Fonts(AssetManager a, Skin skin) {
+            boolean glass = skin.glass, game = skin == Skin.GTA_VI;
+            proportional = glass || game;
+            String path = proportional ? "fonts/InterVariable.ttf" : FONT;
             thin = font(a, path, glass ? 200 : 300);
             light = font(a, path, 300);
-            displayMedium = font(a, path, 500); displaySemibold = font(a, path, 600);
-            regular = font(a, path, 400); medium = font(a, path, 500); semibold = font(a, path, 600);
-            mono = glass ? regular : font(a, "fonts/JetBrainsMono.ttf", 400);
+            displayMedium = font(a, path, game ? 700 : 500); displaySemibold = font(a, path, game ? 700 : 600);
+            regular = font(a, path, 400); medium = font(a, path, 500); semibold = font(a, path, game ? 700 : 600);
+            mono = game ? Typeface.create("sans-serif-condensed", Typeface.BOLD)
+                    : glass ? regular : font(a, "fonts/JetBrainsMono.ttf", 400);
         }
         Paint numbers(Typeface face, float size, int color) {
-            Paint p = text(glass ? face : Typeface.create(mono, face.getWeight(), false), size, color);
+            Paint p = text(proportional ? face : Typeface.create(mono, face.getWeight(), false), size, color);
             p.setFontFeatureSettings("'tnum'");
             return p;
         }

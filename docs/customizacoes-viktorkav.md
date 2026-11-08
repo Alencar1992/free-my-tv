@@ -1,5 +1,15 @@
 # Customizar a versão ViktorKav
 
+## Aparência GTA VI desta personalização
+
+Em Configurações → Aparência → **GTA VI**, a home usa uma captura oficial fixa de Vice City, painéis roxo profundo, detalhes lilás/rosa e foco pêssego. Títulos usam Inter Bold e rótulos usam a família condensada do Android; não são as fontes proprietárias da Rockstar.
+
+Na mesma aparência, **Tela de Descanso → Ver agora** abre uma galeria offline com 11 capturas oficiais: Vice City e outras regiões de Leonida, carros, Jason, Lucia, o casal e personagens como Cal Hampton e Boobie Ike. As fotos mudam a cada 30 segundos com transição de 3 segundos e o logo do jogo aparece no canto superior esquerdo. As imagens mantêm a proporção e as legendas acompanham português/inglês. A galeria não depende do feed do YouTube. O sistema da TV continua determinando quando o descanso automático começa; esse tempo não foi alterado.
+
+`GameGallery.java` define o catálogo e salta imagens que falharam. `Wallpaper.java` carrega assets em background com limites de resolução; `ImageSizing.java` define a amostragem e o recorte do fundo da home. `DreamView.java` reutiliza o ciclo de preparação/transição. Atribuições, URLs e checksums estão em [app/assets/wallpapers/SOURCES.md](../app/assets/wallpapers/SOURCES.md).
+
+As duas aparências anteriores e seus IDs persistidos permanecem disponíveis. O código de troca de launcher, watchdog e pacotes protegidos foi preservado. Veja [o guia desta versão](../INSTRUCOES-INSTALACAO.md) antes de instalar: a assinatura é própria, o backup Android está desativado e a TCL/43S5K ainda precisa de teste físico.
+
 O [Free My TV original](https://github.com/simbasjungles/free-my-tv) fornece a base Android e a troca de launcher. Este fork acrescenta identidade visual, skins e um feed opcional. Para instalar primeiro, use o [README](../README.md); para acompanhar a experiência do vídeo, veja o [tutorial](https://viktorkav.com.br/tutoriais/free-my-tv.html).
 
 ## O que já está implementado

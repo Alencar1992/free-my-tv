@@ -38,7 +38,7 @@ import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 
 /**
- * Shared TV home with selectable ViktorKav and Liquid Glass presentation,
+ * Shared TV home with selectable ViktorKav, Liquid Glass and GTA VI presentation,
  * nine subscription cards across three scrollable rows and seven streaming shortcuts. Cyan outlines identify the remote's focus.
  * The existing drawer, tab navigation, app actions and accessibility tree remain shared.
  * Measurements use a 1920×1080 canvas, scaled by k. Cached layers only redraw when content changes.
@@ -59,6 +59,9 @@ final class HomeView extends ViewGroup implements Choreographer.FrameCallback, H
     final Skin skin;
     private final Skin.Palette theme = new Skin.Palette();
     private final Ui.Fonts fonts;
+    private Bitmap gameWallpaper;
+    private boolean wallpaperAttempted, destroyed;
+    private int wallpaperGeneration;
     // Tile focus (Apple TV style): it grows from the center and its shadow drops (it "rises" toward the viewer).
     // Corner capsule.
     // Corner capsule: the height and top offset of the tvOS tab bar (68 and 46).
@@ -348,6 +351,7 @@ final class HomeView extends ViewGroup implements Choreographer.FrameCallback, H
     void resume() {
         if (running) return;
         running = true;
+        loadGameWallpaper();
         checkNight(false);
         resumedAt = SystemClock.uptimeMillis();
         lastNanos = 0;
@@ -382,7 +386,33 @@ final class HomeView extends ViewGroup implements Choreographer.FrameCallback, H
 
     void destroy() {
         pause();
+        destroyed = true;
+        wallpaperGeneration++;
+        Bitmap gone = gameWallpaper;
+        gameWallpaper = null;
+        if (gone != null) handler.postDelayed(gone::recycle, 1000);
         click.release();
+    }
+
+    private void loadGameWallpaper() {
+        if (skin != Skin.GTA_VI || wallpaperAttempted || destroyed) return;
+        wallpaperAttempted = true;
+        final int gen = wallpaperGeneration;
+        final android.content.res.AssetManager assets = activity.getApplicationContext().getAssets();
+        LOADER.execute(() -> {
+            Bitmap loaded = null;
+            try { loaded = Wallpaper.home(assets); }
+            catch (Exception | OutOfMemoryError e) { AppLog.w("game wallpaper: " + e.getMessage()); }
+            final Bitmap ready = loaded;
+            handler.post(() -> {
+                if (destroyed || gen != wallpaperGeneration) {
+                    if (ready != null) ready.recycle();
+                    return;
+                }
+                gameWallpaper = ready;
+                sky.invalidate();
+            });
+        });
     }
 
     /** Starting state (Home pressed while the home screen is showing): first app focused, drawer and sheet closed. */
@@ -2187,7 +2217,7 @@ final class HomeView extends ViewGroup implements Choreographer.FrameCallback, H
             }
         }
         if (skin.glass) showBackdrop(cards.isEmpty() ? null : cardBackdrops[0]);
-        // ViktorKav keeps a neutral canvas.
+        // Non-glass skins own their fixed background instead of using feed thumbnails.
         heroDirty = true;
         spoken.focusMoved();    // new picks under the focused card
     }
@@ -2203,6 +2233,11 @@ final class HomeView extends ViewGroup implements Choreographer.FrameCallback, H
 
     /** Fixed graphite or a softly blurred day/night photo backdrop. */
     private void drawLightSky(Canvas c) {
+        if (skin == Skin.GTA_VI) {
+            c.drawColor(theme.BACKGROUND);
+            if (gameWallpaper != null) drawImage(c, gameWallpaper, 1);
+            return;
+        }
         if (!skin.glass) {
             c.drawColor(theme.BACKGROUND);
 
@@ -2264,9 +2299,14 @@ final class HomeView extends ViewGroup implements Choreographer.FrameCallback, H
                 c.drawText(tabs()[i], r.centerX() - p.measureText(tabs()[i]) / 2, r.centerY() + Ui.halfCap(p), p);
             }
         } else {
-            Ui.brand(c, MARGIN * k, 70 * k, 56 * k);
-            c.drawText("ViktorKav", 158 * k, 120 * k, lTitle);
-            c.drawText(Ui.tr("TV / SUAS INSCRIÇÕES", "TV / YOUR SUBSCRIPTIONS"), 160 * k, 147 * k, brandLabel);
+            if (skin == Skin.GTA_VI) {
+                c.drawText("GTA VI", MARGIN * k, 120 * k, lTitle);
+                c.drawText("FREE MY TV · VIKTORKAV", MARGIN * k, 147 * k, brandLabel);
+            } else {
+                Ui.brand(c, MARGIN * k, 70 * k, 56 * k);
+                c.drawText("ViktorKav", 158 * k, 120 * k, lTitle);
+                c.drawText(Ui.tr("TV / SUAS INSCRIÇÕES", "TV / YOUR SUBSCRIPTIONS"), 160 * k, 147 * k, brandLabel);
+            }
             border.setColor(theme.LINE);
             c.drawLine(MARGIN * k, 244 * k, CONTENT_R * k, 244 * k, border);
             for (int i = 0; i < 3; i++) {

@@ -7,6 +7,17 @@ public final class SkinTest {
         if (!ok) throw new AssertionError(message);
     }
     public static void main(String[] args) {
+        Skin gta = Skin.fromId("gta-vi");
+        check("gta-vi".equals(gta.id), "Saved GTA VI choice must open its own appearance");
+        check("GTA VI".equals(gta.label), "GTA VI is visible in the appearance selector");
+        check(Skin.fromId("viktorkav") == Skin.VIKTORKAV, "Existing graphite choice survives the update");
+        check(Skin.fromId("liquid-glass") == Skin.LIQUID_GLASS, "Existing glass choice survives the update");
+        Skin.Palette gameDay = new Skin.Palette(), gameNight = new Skin.Palette();
+        gta.apply(gameDay, 0);
+        gta.apply(gameNight, 1);
+        check(gameDay.BACKGROUND == gameNight.BACKGROUND, "GTA VI keeps its sunset palette all day");
+        check(gameDay.FOCUS == 0xFFFFD6A3, "GTA VI focus uses the reference's peach accent");
+        check(!gta.glass, "GTA VI does not require a glass shader for its artwork");
         for (String id : new String[] {null, "", "removed-skin", "LIQUID-GLASS"})
             check(Skin.fromId(id) == Skin.VIKTORKAV, "Unknown skin must open the default launcher");
         for (Skin skin : Skin.values()) check(Skin.fromId(skin.id) == skin, "Saved choice must round trip");

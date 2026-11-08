@@ -12,7 +12,11 @@ enum Skin {
                     0xFF1C1C1E, 0xFFFFFFFF, 0xFFF5F5F7, 0xFF1C1C1E},
             new int[] {0xFF101115, 0xFF17181D, 0xFF24252B, 0xFF36373E,
                     0xFF55565F, 0xFFF5F5F7, 0xFFDDDEE4, 0xFFB8BBC4,
-                    0xFFF5F5F7, 0xFFFFFFFF, 0xFFF5F5F7, 0xFF1C1C1E});
+                    0xFFF5F5F7, 0xFFFFFFFF, 0xFFF5F5F7, 0xFF1C1C1E}),
+    GTA_VI("gta-vi", "GTA VI", "Leonida · pôr do sol · galeria offline", "Leonida · sunset · offline gallery", false, 18, 18, .07f,
+            new int[] {0xFF261D3D, 0xFF21192F, 0xFF302541, 0xFF423452,
+                    0xFF8E739D, 0xFFFFFFFF, 0xFFF1DFF0, 0xFFD7BEDB,
+                    0xFFE7A5CA, 0xFFFFD6A3, 0xFF4A3658, 0xFF261D3D}, null);
 
     final String id, label, descriptionPt, descriptionEn;
     final boolean glass;

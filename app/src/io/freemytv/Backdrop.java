@@ -116,20 +116,33 @@ final class Backdrop {
         while (bounds.outWidth / (opts.inSampleSize * 2) >= w && bounds.outHeight / (opts.inSampleSize * 2) >= h) opts.inSampleSize *= 2;
         Bitmap src = android.graphics.BitmapFactory.decodeFile(f.getPath(), opts);
         if (src == null) throw new java.io.IOException("unreadable image");
-        Bitmap out = fit(src, w, h);
-        src.recycle();
-        if (light != null && light.length >= 2) {
-            light[0] = luminance(out, 0, 0.6f, 0.5f, 0.95f);
-            light[1] = luminance(out, 0.62f, 0.04f, 0.96f, 0.36f);
+        return photo(src, w, h, light);
+    }
+
+    /** Consumes an already sampled source, including on failure; also used by bundled game photos. */
+    static Bitmap[] photo(Bitmap src, int w, int h, float[] light) {
+        Bitmap out = null, frost = null;
+        try {
+            out = fit(src, w, h);
+            if (light != null && light.length >= 2) {
+                light[0] = luminance(out, 0, 0.6f, 0.5f, 0.95f);
+                light[1] = luminance(out, 0.62f, 0.04f, 0.96f, 0.36f);
+            }
+            int fw = w / PHOTO_FROST, fh = h / PHOTO_FROST;
+            frost = Bitmap.createBitmap(reduce(out, fw, fh, 3, 2), fw, fh, Bitmap.Config.ARGB_8888);
+            if (!out.isMutable()) {
+                Bitmap copy = out.copy(Bitmap.Config.ARGB_8888, true);
+                out.recycle();
+                out = copy;
+            }
+            return new Bitmap[] {out, frost};
+        } catch (RuntimeException | OutOfMemoryError e) {
+            if (out != null && !out.isRecycled()) out.recycle();
+            if (frost != null && !frost.isRecycled()) frost.recycle();
+            throw e;
+        } finally {
+            src.recycle();
         }
-        int fw = w / PHOTO_FROST, fh = h / PHOTO_FROST;
-        Bitmap frost = Bitmap.createBitmap(reduce(out, fw, fh, 3, 2), fw, fh, Bitmap.Config.ARGB_8888);
-        if (!out.isMutable()) {
-            Bitmap copy = out.copy(Bitmap.Config.ARGB_8888, true);
-            out.recycle();
-            out = copy;
-        }
-        return new Bitmap[] {out, frost};
     }
 
     /** Fits the entire source into the target, reducing large images in background before the final draw. */

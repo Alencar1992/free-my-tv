@@ -11,6 +11,7 @@ import android.graphics.PorterDuff;
 import android.graphics.PorterDuffXfermode;
 import android.graphics.RadialGradient;
 import android.graphics.Rect;
+import android.graphics.RectF;
 import android.graphics.RecordingCanvas;
 import android.graphics.RenderNode;
 import android.graphics.RuntimeShader;
@@ -34,7 +35,8 @@ import java.util.concurrent.Executors;
 
 /**
  * Skin-aware screensaver: channel composition or full-screen photos with a refractive clock,
- * dated public channel metrics and weather. Existing crossfades and idle drift are preserved.
+ * dated public channel metrics and weather, or the offline GTA VI gallery.
+ * Existing crossfades and idle drift are preserved.
  */
 final class DreamView extends View implements Choreographer.FrameCallback, HomeData.Listener, Recs.Listener {
     private static final long SHOW_MS = 30_000, FADE_MS = 3_000, FIRST_MS = 1_600;
@@ -120,6 +122,9 @@ final class DreamView extends View implements Choreographer.FrameCallback, HomeD
     private boolean decoding;
     private int generation, slides;
     private Slide current, incoming, prepared;
+    private Bitmap gameLogo;
+    private boolean logoAttempted;
+    private final RectF logoRect = new RectF();
     private Glass glass;
     private String glassFor = "";
     private long startedAt, firstAt, lastFrame, lastSky;
@@ -135,8 +140,10 @@ final class DreamView extends View implements Choreographer.FrameCallback, HomeD
         @Override public void run() {
             if (!running) return;
             data.refreshIfStale();
-            recs.refreshIfStale();
-            recs.prefetchAll();
+            if (skin != Skin.GTA_VI) {
+                recs.refreshIfStale();
+                recs.prefetchAll();
+            }
             dirty = true;
             chromeDirty = true;
             prepareNext();
@@ -150,8 +157,8 @@ final class DreamView extends View implements Choreographer.FrameCallback, HomeD
         fonts = Ui.fonts(c, skin);
         skin.apply(theme, 1);
         TITLE_W = skin.glass ? 1000 : 1100;
-        DATE_BASE = skin.glass ? 92 : 180;
-        CLOCK_TOP = skin.glass ? 120 : 240;
+        DATE_BASE = skin.glass || skin == Skin.GTA_VI ? 92 : 180;
+        CLOCK_TOP = skin.glass || skin == Skin.GTA_VI ? 120 : 240;
         CLOCK_SIZE = skin.glass ? 200 : 144;
         data = HomeData.get(c);
         recs = Recs.get(c);
@@ -180,12 +187,14 @@ final class DreamView extends View implements Choreographer.FrameCallback, HomeD
         startedAt = clock();
         lastFrame = 0;
         failed.clear();
-        fallback = recs.showcase().isEmpty();
+        fallback = skin != Skin.GTA_VI && recs.showcase().isEmpty();
         data.addListener(this);
-        recs.addListener(this);
         data.refreshIfStale();
-        recs.refreshIfStale();
-        recs.prefetchAll();
+        if (skin != Skin.GTA_VI) {
+            recs.addListener(this);
+            recs.refreshIfStale();
+            recs.prefetchAll();
+        }
         prepareNext();
         handler.postDelayed(tick, 60_000);
         Choreographer.getInstance().postFrameCallback(this);
@@ -209,6 +218,12 @@ final class DreamView extends View implements Choreographer.FrameCallback, HomeD
             gone.add(s.frost);
             if (s.clockImage != null) gone.add(s.clockImage);
         }
+        if (gameLogo != null) gone.add(gameLogo);
+        gameLogo = null;
+        logoAttempted = false;
+        chrome.discardDisplayList();
+        content.discardDisplayList();
+        dirty = chromeDirty = true;
         if (!gone.isEmpty()) handler.postDelayed(() -> { for (Bitmap b : gone) b.recycle(); }, 1000);
         current = incoming = prepared = null;
         glass = null;
@@ -217,6 +232,7 @@ final class DreamView extends View implements Choreographer.FrameCallback, HomeD
     }
 
     @Override protected void onDetachedFromWindow() {
+        stop();
         super.onDetachedFromWindow();
         worker.shutdownNow();
     }
@@ -284,22 +300,33 @@ final class DreamView extends View implements Choreographer.FrameCallback, HomeD
     /** Loads the next photo in the background (one at a time); once ready, it comes in at the right moment. */
     private void prepareNext() {
         if (!running || decoding || prepared != null) return;
-        List<Recs.Pick> list = recs.showcase();
-        if (list.isEmpty()) return;
         Slide last = incoming != null ? incoming : current;
-        int start = 0;
-        if (last != null) {
-            for (int i = 0; i < list.size(); i++) {
-                if (Recs.key(list.get(i)).equals(Recs.key(last.pick))) {
-                    start = i + 1;
-                    break;
+        Recs.Pick pick = null;
+        if (skin == Skin.GTA_VI) {
+            GameGallery.Entry entry = GameGallery.next(last == null ? null : Recs.key(last.pick), failed);
+            if (entry != null) {
+                pick = new Recs.Pick();
+                pick.videoId = entry.asset;
+                pick.backdrop = entry.asset;
+                pick.title = entry.title(Ui.en);
+                pick.meta = Ui.tr("Captura oficial · Rockstar Games", "Official screenshot · Rockstar Games");
+            }
+        } else {
+            List<Recs.Pick> list = recs.showcase();
+            if (list.isEmpty()) return;
+            int start = 0;
+            if (last != null) {
+                for (int i = 0; i < list.size(); i++) {
+                    if (Recs.key(list.get(i)).equals(Recs.key(last.pick))) {
+                        start = i + 1;
+                        break;
+                    }
                 }
             }
-        }
-        Recs.Pick pick = null;
-        for (int i = 0; i < list.size() && pick == null; i++) {
-            Recs.Pick p = list.get((start + i) % list.size());
-            if (!failed.contains(Recs.key(p))) pick = p;
+            for (int i = 0; i < list.size() && pick == null; i++) {
+                Recs.Pick p = list.get((start + i) % list.size());
+                if (!failed.contains(Recs.key(p))) pick = p;
+            }
         }
         if (pick == null) {
             if (current == null) fallback = true;
@@ -310,8 +337,8 @@ final class DreamView extends View implements Choreographer.FrameCallback, HomeD
             prepared = newSlide(pick, last.image, last.frost, last.lightCaption, last.lightClock);
             return;
         }
-        File file = recs.readyImage(pick);
-        if (file == null) {
+        final File file = skin == Skin.GTA_VI ? null : recs.readyImage(pick);
+        if (skin != Skin.GTA_VI && file == null) {
             failed.add(Recs.key(pick));   // the image is gone from disk: try the next one
             prepareNext();
             return;
@@ -319,24 +346,42 @@ final class DreamView extends View implements Choreographer.FrameCallback, HomeD
         decoding = true;
         final int gen = generation;
         final Recs.Pick chosen = pick;
+        final boolean loadLogo = skin == Skin.GTA_VI && !logoAttempted;
+        if (loadLogo) logoAttempted = true;
         worker.execute(() -> {
+            Bitmap logo = null;
+            if (loadLogo) {
+                try { logo = Wallpaper.decode(getContext().getAssets(), GameGallery.LOGO, 320, 240); }
+                catch (Exception | OutOfMemoryError e) { AppLog.w("game logo: " + e.getMessage()); }
+            }
             Bitmap[] images = null;
             float[] light = new float[2];
             try {
-                images = Backdrop.photo(file, PW, PH, light);
-                if (skin.glass) images[0] = withScrims(images[0], light[0], light[1]);
+                images = skin == Skin.GTA_VI
+                        ? Backdrop.photo(Wallpaper.decode(getContext().getAssets(), chosen.backdrop, PW, PH), PW, PH, light)
+                        : Backdrop.photo(file, PW, PH, light);
+                if (skin.glass || skin == Skin.GTA_VI) images[0] = withScrims(images[0], light[0], light[1]);
                 images[0] = Backdrop.gpu(images[0]);
             } catch (Exception | OutOfMemoryError e) {
                 AppLog.w("screensaver: photo for “" + chosen.title + "”: " + e.getMessage());
+                if (images != null) for (Bitmap b : images) if (b != null && !b.isRecycled()) b.recycle();
+                images = null;
             }
             final Bitmap[] ready = images;
+            final Bitmap readyLogo = logo;
             handler.post(() -> {
-                if (gen != generation) {
+                if (gen != generation || !running) {
                     // The screensaver closed while the photo was loading: free the memory right away.
                     if (ready != null) for (Bitmap b : ready) b.recycle();
+                    if (readyLogo != null) readyLogo.recycle();
                     return;
                 }
                 decoding = false;
+                if (readyLogo != null) {
+                    gameLogo = readyLogo;
+                    dirty = chromeDirty = true;
+                    invalidate();
+                }
                 if (ready == null) {
                     failed.add(Recs.key(chosen));
                     prepareNext();
@@ -465,7 +510,7 @@ final class DreamView extends View implements Choreographer.FrameCallback, HomeD
         place(current, up, placeA);
         float e = incoming == null ? 0 : fadeIn(up - incoming.startedAt, FADE_MS);
         canvas.save();
-        if (!skin.glass) {
+        if (!skin.glass && skin != Skin.GTA_VI) {
             canvas.translate(MARGIN * k, 220 * k);
             canvas.scale(1100f / 1920, 1100f / 1920);
             canvas.clipRect(0, 0, w, h);
@@ -478,6 +523,11 @@ final class DreamView extends View implements Choreographer.FrameCallback, HomeD
         canvas.restore();
 
         if (chromeDirty) recordChrome();
+        if (skin == Skin.GTA_VI) {
+            double phase = (up - startedAt) / 1000.0 * 2 * Math.PI / DRIFT_PERIOD_S;
+            chrome.setTranslationX((float) Math.sin(phase) * 8 * k);
+            chrome.setTranslationY((float) Math.cos(phase) * 5 * k);
+        }
         chrome.setAlpha(first);
         canvas.drawRenderNode(chrome);
         drawGlass(canvas, first, e);
@@ -492,6 +542,7 @@ final class DreamView extends View implements Choreographer.FrameCallback, HomeD
     // MARK: - Identity, solid clock, channel metrics and weather
 
     private void recordChrome() {
+        if (skin == Skin.GTA_VI) { recordGameChrome(); return; }
         if (skin.glass) { recordGlassChrome(); return; }
         RecordingCanvas c = chrome.beginRecording(w, h);
         try {
@@ -524,6 +575,26 @@ final class DreamView extends View implements Choreographer.FrameCallback, HomeD
         } finally {
             chrome.endRecording();
         }
+        chromeDirty = false;
+    }
+
+    private void recordGameChrome() {
+        RecordingCanvas c = chrome.beginRecording(w, h);
+        try {
+            float right = RIGHT * k;
+            if (gameLogo != null) {
+                float width = 210 * k, height = width * gameLogo.getHeight() / gameLogo.getWidth();
+                logoRect.set(MARGIN * k, 64 * k, MARGIN * k + width, 64 * k + height);
+                photoPaint.setAlpha(255);
+                c.drawBitmap(gameLogo, null, logoRect, photoPaint);
+            } else c.drawText("GTA VI", MARGIN * k, 120 * k, brandTitle);
+            c.drawText(date, right - cornerDate.measureText(date), DATE_BASE * k, cornerDate);
+            Rect ink = new Rect();
+            cornerClock.getTextBounds(clock, 0, clock.length(), ink);
+            c.drawText(clock, right - ink.right, CLOCK_TOP * k - ink.top, cornerClock);
+            String credit = "Free My TV · Simba / ViktorKav";
+            c.drawText(credit, right - cornerStale.measureText(credit), META_BASE * k, cornerStale);
+        } finally { chrome.endRecording(); }
         chromeDirty = false;
     }
 
@@ -798,8 +869,10 @@ final class DreamView extends View implements Choreographer.FrameCallback, HomeD
                     .setMaxLines(2).setEllipsize(TextUtils.TruncateAt.END).setAlignment(Layout.Alignment.ALIGN_NORMAL)
                     .setIncludePad(false).build();
             float originY = titleBase - t.getLineBaseline(t.getLineCount() - 1);
-            float labelBase = skin.glass ? originY + t.getLineBaseline(0) - Ui.cap(titlePaint) - 30 * k : 194 * k;
-            c.drawText(Ui.tr("SUAS INSCRIÇÕES · YOUTUBE", "YOUR SUBSCRIPTIONS · YOUTUBE"), x, labelBase, labelPaint);
+            float labelBase = skin.glass || skin == Skin.GTA_VI ? originY + t.getLineBaseline(0) - Ui.cap(titlePaint) - 30 * k : 194 * k;
+            String label = skin == Skin.GTA_VI ? "LEONIDA · GRAND THEFT AUTO VI"
+                    : Ui.tr("SUAS INSCRIÇÕES · YOUTUBE", "YOUR SUBSCRIPTIONS · YOUTUBE");
+            c.drawText(label, x, labelBase, labelPaint);
             c.save();
             c.translate(x - Ui.leftBearing(titlePaint, title), originY);
             t.draw(c);
