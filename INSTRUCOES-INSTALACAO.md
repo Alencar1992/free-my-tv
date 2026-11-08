@@ -4,8 +4,8 @@ Versão `1.7.0-gta.1`, pacote `io.freemytv`, Android 12+. Personalização do fo
 
 ## Downloads
 
-- [Release com APK, checksums e certificado](https://github.com/Alencar1992/free-my-tv-gta-vi/releases/tag/v1.7.0-gta.1).
-- [Código desta personalização](https://github.com/Alencar1992/free-my-tv-gta-vi).
+- [Release com APK, checksums e certificado](https://github.com/Alencar1992/free-my-tv/releases/tag/v1.7.0-gta.1).
+- [Código desta personalização](https://github.com/Alencar1992/free-my-tv).
 - [Platform Tools oficial para Windows](https://developer.android.com/tools/releases/platform-tools).
 
 Baixe `FreeMyTV-GTA-VI-1.7.0-gta.1.apk`, `SHA256SUMS.txt` e `ASSINATURA.txt` nos assets da release. Os arquivos Source code contêm fontes; não são o aplicativo instalável. Compare `Get-FileHash .\FreeMyTV-GTA-VI-1.7.0-gta.1.apk -Algorithm SHA256` com `SHA256SUMS.txt` antes de usar o APK.

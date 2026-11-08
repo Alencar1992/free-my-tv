@@ -2,7 +2,7 @@
 
 Personalização para Android TV / Google TV, baseada na branch **viktorkav** de [ViktorKav/free-my-tv](https://github.com/viktorkav/free-my-tv), que preserva o Free My TV original de **Simba / simbasjungles e contribuidores**. A licença MIT e os créditos originais permanecem incluídos.
 
-**[Baixar APK GTA VI](https://github.com/Alencar1992/free-my-tv-gta-vi/releases/tag/v1.7.0-gta.1)** · **[Instalação, assinatura e retorno a Original](INSTRUCOES-INSTALACAO.md)** · [Fontes das imagens](app/assets/wallpapers/SOURCES.md)
+**[Baixar APK GTA VI](https://github.com/Alencar1992/free-my-tv/releases/tag/v1.7.0-gta.1)** · **[Instalação, assinatura e retorno a Original](INSTRUCOES-INSTALACAO.md)** · [Fontes das imagens](app/assets/wallpapers/SOURCES.md)
 
 A terceira aparência **GTA VI** acrescenta fundo fixo oficial de Vice City, roxo/lilás/rosa com foco pêssego, títulos fortes e rótulos condensados. O descanso dessa aparência tem **11 capturas oficiais locais**, com Leonida, carros, Jason, Lucia e outros personagens, logo e relógio; troca a cada 30 segundos com transição de 3 segundos. As duas skins anteriores continuam disponíveis e o feed permanece opcional e desativado nos defaults públicos.
 

@@ -7,7 +7,7 @@ ViktorKav visual/feed adaptation:
 https://github.com/viktorkav/free-my-tv (branch viktorkav)
 
 GTA VI appearance customization:
-https://github.com/Alencar1992/free-my-tv-gta-vi
+https://github.com/Alencar1992/free-my-tv
 
 Original MIT notice: licenses/FreeMyTV-MIT.txt. Existing font licenses
 remain in fonts/; existing app-logo sources remain in logos/SOURCES.md.
