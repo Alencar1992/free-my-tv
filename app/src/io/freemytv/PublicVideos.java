@@ -128,8 +128,12 @@ final class PublicVideos {
             });
             Document document = builder.parse(new InputSource(new StringReader(xml)));
             Element feed = document.getDocumentElement();
+            // Public channel feeds can omit the UC prefix only in their header. Video entries
+            // below still have to match the complete canonical ID of the requested channel.
+            String headerId = child(feed, YT, "channelId");
+            boolean sameChannel = expectedChannelId.equals(headerId) || expectedChannelId.substring(2).equals(headerId);
             if (!ATOM.equals(feed.getNamespaceURI()) || !"feed".equals(feed.getLocalName())
-                    || !expectedChannelId.equals(child(feed, YT, "channelId"))) throw new IllegalArgumentException("Unexpected feed channel");
+                    || !sameChannel) throw new IllegalArgumentException("Unexpected feed channel");
             String channelTitle = "";
             Element author = childElement(feed, ATOM, "author");
             if (author != null) channelTitle = clean(child(author, ATOM, "name"), 200);

@@ -86,18 +86,31 @@ final class DiscoverySource {
                 if(!force && state.fresh(ref,System.currentTimeMillis())){
                     state.cached(token,ref);notifyListeners();continue;
                 }
+                String stage="metadata";
                 try {
                     if(System.nanoTime()>deadline)throw new IOException("Refresh time budget exceeded");
                     String id=ChannelRef.channelId(ref);
                     if(id==null)id=PublicVideos.resolveChannel(request(ref,PublicVideos.HTML_LIMIT,deadline));
                     if(!state.current(token))return;
+                    stage="feed";
                     String xml=request(PublicVideos.feedUrl(id),PublicVideos.FEED_LIMIT,deadline);
+                    stage="parse";
                     long at=System.currentTimeMillis();
                     if(state.accept(token,ref,id,xml,at)) {
                         // Cache failure must not discard valid fresh network data.
                         try{save(key,id,xml,at);}catch(Exception ignored){}
                     }
-                }catch(Exception ignored){state.fail(token,ref);}
+                }catch(Exception error){
+                    state.fail(token,ref);
+                    // Log only stage, exception type and our own HTTP status text, never URLs,
+                    // favorite channels, downloaded bodies or parser messages containing user data.
+                    Throwable cause=error;
+                    for(int depth=0;depth<8 && cause.getCause()!=null;depth++)cause=cause.getCause();
+                    String status=error.getMessage();
+                    if(status==null || !status.matches("Public source unavailable HTTP [0-9]{3}"))status="";
+                    AppLog.w("public-video-fetch stage="+stage+" type="+error.getClass().getSimpleName()
+                            +" cause="+cause.getClass().getSimpleName()+" "+status);
+                }
                 notifyListeners();
             }
             if(state.current(token))prune(new HashSet<>(keys));
@@ -153,7 +166,7 @@ final class DiscoverySource {
                     try{address=new URI(address).resolve(location).toString();}catch(Exception e){throw new IOException("Invalid redirect",e);}
                     continue;
                 }
-                if(code!=200)throw new IOException("Public source unavailable");
+                if(code!=200)throw new IOException("Public source unavailable HTTP "+code);
                 if(connection.getContentLengthLong()>limit)throw new IOException("Response exceeds limit");
                 try(InputStream input=connection.getInputStream()){return read(input,limit,deadline);}
             }finally{connection.disconnect();}

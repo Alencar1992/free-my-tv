@@ -15,6 +15,12 @@ public final class PublicVideosTest {
         check(videos.size()==2 && videos.get(0).id.equals("zyxwvutsrqp"),"Recent uploads sort by published date");
         check(videos.get(0).url.equals("https://www.youtube.com/watch?v=zyxwvutsrqp"),"Playback URLs are built from validated video ID");
         check(videos.get(0).thumbnail.equals("https://i.ytimg.com/vi/zyxwvutsrqp/hqdefault.jpg"),"Untrusted feed URLs never become thumbnail endpoints");
+        // YouTube's channel feed header may omit UC while entries keep the full ID.
+        String bareHeader=xml.replaceFirst("<yt:channelId>"+CID+"</yt:channelId>","<yt:channelId>"+CID.substring(2)+"</yt:channelId>");
+        check(PublicVideos.parse(bareHeader,CID,favorite).size()==2,"YouTube's bare feed-level channel ID still identifies the requested channel");
+        reject(()->PublicVideos.parse(bareHeader.replace("<yt:channelId>"+CID.substring(2)+"</yt:channelId>","<yt:channelId>zyxwvutsrqponmlkjihgfe</yt:channelId>"),CID,favorite),"A different bare channel header is rejected even with matching video entries");
+        String bareEntries=bareHeader.replace("<yt:channelId>"+CID+"</yt:channelId>","<yt:channelId>"+CID.substring(2)+"</yt:channelId>");
+        check(PublicVideos.parse(bareEntries,CID,favorite).isEmpty(),"Entry channel IDs still require the full canonical UC prefix");
         List<PublicVideos.Video> trailers=PublicVideos.parse(xml,CID,trailer);
         check(trailers.size()==1 && trailers.get(0).trailer && !trailers.get(0).favorite,"Only promotional titles enter trailer source");
         check(PublicVideos.isTrailer("PRÉVIA: novo filme") && PublicVideos.isTrailer("TEASER") && !PublicVideos.isTrailer("Entrevista"),"Trailer title filtering is case/accent insensitive");
