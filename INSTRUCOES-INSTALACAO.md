@@ -1,18 +1,32 @@
 # Instalar e voltar — Free My TV GTA VI
 
-Versão `1.7.0-gta.4`, pacote `io.freemytv`, Android 12+. Personalização do fork ViktorKav, baseado no Free My TV de Simba/simbasjungles e contribuidores, preservando a licença MIT.
+Versão `1.7.0-gta.5`, pacote `io.freemytv`, Android 12+. Personalização do fork ViktorKav, baseado no Free My TV de Simba/simbasjungles e contribuidores, preservando a licença MIT.
 
 ## Downloads
 
-- [Release com APK, checksums e certificado](https://github.com/Alencar1992/free-my-tv/releases/tag/v1.7.0-gta.4).
-- [Baixar APK diretamente](https://github.com/Alencar1992/free-my-tv/raw/refs/heads/downloads/FreeMyTV-GTA-VI-1.7.0-gta.4.apk).
+- [Release com APK, checksums e certificado](https://github.com/Alencar1992/free-my-tv/releases/tag/v1.7.0-gta.5).
+- [Baixar APK diretamente](https://github.com/Alencar1992/free-my-tv/raw/refs/heads/downloads/FreeMyTV-GTA-VI-1.7.0-gta.5.apk).
 - [Pacote completo](https://github.com/Alencar1992/free-my-tv/raw/refs/heads/downloads/FreeMyTV-GTA-VI-Pacote.zip).
 - [Código desta personalização — branch gta-vi](https://github.com/Alencar1992/free-my-tv/tree/gta-vi).
 - [Platform Tools oficial para Windows](https://developer.android.com/tools/releases/platform-tools).
 
-Baixe o APK pelos links acima ou pelo pacote completo. `SHA256SUMS.txt` e `ASSINATURA.txt` estão no pacote e na [branch downloads](https://github.com/Alencar1992/free-my-tv/tree/downloads). Os arquivos Source code da release contêm fontes; não são o aplicativo instalável. Compare `Get-FileHash .\FreeMyTV-GTA-VI-1.7.0-gta.4.apk -Algorithm SHA256` com `SHA256SUMS.txt` antes de usar o APK.
+Baixe o APK pelos links acima ou pelo pacote completo. `SHA256SUMS.txt` e `ASSINATURA.txt` estão no pacote e na [branch downloads](https://github.com/Alencar1992/free-my-tv/tree/downloads). Os arquivos Source code da release contêm fontes; não são o aplicativo instalável. Compare `Get-FileHash .\FreeMyTV-GTA-VI-1.7.0-gta.5.apk -Algorithm SHA256` com `SHA256SUMS.txt` antes de usar o APK.
 
 Esta atualização passou por testes de código e compilação; **os novos recursos ainda não foram testados fisicamente na TCL/43S5K com Google TV / Android 14**. O usuário confirmou a instalação da gta.1, a galeria e o retorno a Original, e depois o uso da personalização e dos feeds públicos após a gta.3. O agente não acessou nem modificou a TV.
+
+## Novidades da gta.5 — painel Xbox
+
+Após atualizar por cima, abra **Free My TV → Personalizar home → 🎮 Xbox · jogos e estatísticas**. Informe sua **API Key pessoal do OpenXBL** no campo mascarado da TV e aperte **Conectar**. Você pode usar o teclado do controle remoto do Google TV no celular, se disponível. A chave é validada e guardada criptografada pelo Android Keystore. Ela não deve ser enviada nesta conversa, em screenshots do dashboard, por comandos ADB ou publicada no GitHub. O APK não contém uma chave compartilhada.
+
+Busque o nome do jogo, navegue nas páginas e aperte **OK** na linha com sua imagem para selecioná-lo na home. A tela mostra os dados disponíveis: 🏆 conquistas, ⏱️ tempo, 📊 percentual de conquistas, 🏅 Gamerscore e estatísticas específicas com emojis, quando retornadas. Percentual de conquistas não é progresso da campanha.
+
+Na home GTA VI, o painel fica ao lado do contador. Suba até as abas Recentes/YouTube/Trailers; aperte **Cima** novamente para focar o painel Xbox e **OK** para abrir a busca. **Baixo** volta ao item anterior. Selecionar outro jogo altera os dados e a imagem do painel; o fundo e o contador GTA VI continuam como antes. Depois de20/11, o contador some e o painel Xbox continua.
+
+A lista é o histórico retornado pelo Xbox, com limite de1.000 jogos; títulos comprados e nunca jogados podem não aparecer. Alguns títulos antigos ou estatísticas podem não ser fornecidos pelo serviço; nesses casos aparecem valores indisponíveis, sem zeros inventados. GTA VI aparecerá para seleção quando for retornado no seu histórico; não há promessa antecipada de percentual de campanha.
+
+A atualização automática ocorre a cada15 minutos com a home ativa. **Atualizar agora** permite consulta manual, com intervalo mínimo de30 segundos por jogo e limites de uso do provedor. Dados recentes de até20 jogos ficam em memória durante a navegação; a seleção e o último detalhe são guardados privadamente. Em erro temporário, dados válidos salvos ficam indicados como cache. **Desconectar e remover chave** remove a conexão e os dados privados do painel.
+
+Teste no aparelho: conectar, conferir o perfil, buscar um jogo já jogado, verificar tempo/conquistas com o Xbox, selecionar outro e voltar ao anterior, fechar/reabrir e conferir seleção/capa; depois usar as abas e apps normalmente. O teste de API no PC foi bem-sucedido, mas a integração da gta.5, o teclado, as imagens e o Android Keystore precisam dessa validação na TV. [Detalhes da conexão](docs/xbox.md).
 
 ## Novidades da gta.4 — fotos da home e contador
 
@@ -44,14 +58,14 @@ Envie as linhas com `public-video-fetch`. Elas registram a etapa, tipo de falha 
 
 ## Atualizar a GTA VI já instalada, preservando dados
 
-Se você já instalou a `1.7.0-gta.1`, `1.7.0-gta.2` ou `1.7.0-gta.3` deste repositório, esta versão usa **a mesma chave**, com certificado SHA-256:
+Se você já instalou a `1.7.0-gta.1`, `1.7.0-gta.2`, `1.7.0-gta.3` ou `1.7.0-gta.4` deste repositório, esta versão usa **a mesma chave**, com certificado SHA-256:
 
 `f555ccc7fe855e1bcf8c7bc96eecc523838dc856aaa5a0b3388a6ef89aad7308`
 
 Guarde o APK anterior e as anotações das preferências. Confira o APK novo com o checksum e o certificado abaixo. Com a TV conectada e `$TV` definido no PowerShell, na pasta que contém `adb.exe` e o APK:
 
 ```powershell
-.\adb.exe -s $TV install -r '.\FreeMyTV-GTA-VI-1.7.0-gta.4.apk'
+.\adb.exe -s $TV install -r '.\FreeMyTV-GTA-VI-1.7.0-gta.5.apk'
 ```
 
 Espere `Success`. **Não desinstale, não limpe dados e não use `-d`.** O pacote e a chave são os mesmos, e a atualização conserva as preferências. Caso apareça incompatibilidade de assinatura, pare e confira os certificados; não remova o app como tentativa de correção.
@@ -134,14 +148,14 @@ Para verificar o certificado, use o `apksigner.bat` oficial dos **Android SDK Bu
 $ApkSigner = "$env:LOCALAPPDATA\Android\Sdk\build-tools\34.0.0\apksigner.bat"
 Test-Path -LiteralPath $ApkSigner
 & $ApkSigner verify --print-certs '.\backup-tv\base.apk'
-& $ApkSigner verify --print-certs '.\FreeMyTV-GTA-VI-1.7.0-gta.4.apk'
+& $ApkSigner verify --print-certs '.\FreeMyTV-GTA-VI-1.7.0-gta.5.apk'
 ```
 
 Compare `Signer #1 certificate SHA-256 digest` das duas saídas e confira também `ASSINATURA.txt` da release. Sem conseguir verificar, pare aqui. Não descubra uma incompatibilidade tentando instalar por cima. Se houver rotação/histórico de assinaturas, a compatibilidade precisa ser analisada; não presuma que um hash diferente seja uma atualização comum.
 
 ### Se a assinatura for compatível
 
-Uma atualização normal pode preservar os dados privados do mesmo pacote. Guarde o backup e confira o código de versão: esta release usa `versionCode 13`. Se o app instalado tiver código maior, não force downgrade.
+Uma atualização normal pode preservar os dados privados do mesmo pacote. Guarde o backup e confira o código de versão: esta release usa `versionCode 14`. Se o app instalado tiver código maior, não force downgrade.
 
 ### Se a assinatura for diferente
 
@@ -161,7 +175,7 @@ Se preservar as configurações integralmente for obrigatório e não houver exp
 Este comando modifica o aparelho. Não foi executado pelo agente. Use-o apenas depois de resolver os passos anteriores e confirmar a instalação:
 
 ```powershell
-.\adb.exe -s $TV install -r '.\FreeMyTV-GTA-VI-1.7.0-gta.4.apk'
+.\adb.exe -s $TV install -r '.\FreeMyTV-GTA-VI-1.7.0-gta.5.apk'
 ```
 
 Espere `Success`. Se aparecer `INSTALL_FAILED_UPDATE_INCOMPATIBLE`, pare: a assinatura precisa ser resolvida conforme a seção anterior. Não desinstale às cegas. Abra **Free My TV** pela lista de aplicativos da televisão; a instalação sozinha não é a aprovação para trocar a home.

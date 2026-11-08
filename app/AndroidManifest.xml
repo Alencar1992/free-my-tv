@@ -1,8 +1,8 @@
 <?xml version="1.0" encoding="utf-8"?>
 <manifest xmlns:android="http://schemas.android.com/apk/res/android"
     package="io.freemytv"
-    android:versionCode="13"
-    android:versionName="1.7.0-gta.4">
+    android:versionCode="14"
+    android:versionName="1.7.0-gta.5">
 
     <uses-permission android:name="android.permission.INTERNET" />
     <uses-permission android:name="android.permission.ACCESS_NETWORK_STATE" />
@@ -75,6 +75,10 @@
             android:process=":home" android:exported="false"
             android:screenOrientation="landscape" android:excludeFromRecents="true"
             android:theme="@style/FreeMyTV.Home" />
+
+        <activity android:name=".XboxActivity" android:process=":home"
+            android:exported="false" android:screenOrientation="landscape"
+            android:excludeFromRecents="true" android:theme="@style/FreeMyTV.Home" />
 
         <!-- The home screen. Its own process (:home): if it ever crashes, the safety net in the main process still
              works. It only becomes the TV's home screen in Free My TV mode (cmd package set-home-activity). -->

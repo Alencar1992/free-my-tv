@@ -64,6 +64,8 @@ final class HomeView extends ViewGroup implements Choreographer.FrameCallback, H
     private long gameWallpaperFadeAt;
     private final HomeWallpaperCycle gameCycle=new HomeWallpaperCycle();
     private final LaunchCountdownView launchBadge;
+    private final XboxHeaderView xboxPanel;
+    private int xboxReturnTop;
     private final Runnable wallpaperTick=()->loadGameWallpaper();
     // Tile focus (Apple TV style): it grows from the center and its shadow drops (it "rises" toward the viewer).
     // Corner capsule.
@@ -91,7 +93,7 @@ final class HomeView extends ViewGroup implements Choreographer.FrameCallback, H
     private static final String[] PUBLIC_TABS_EN = {"Recent", "YouTube", "Trailers"};
     private static final String[] PUBLIC_KIND = {null, "favorites", "trailer"};
     private static final String[] TAB_KIND = {null, "video", "live"};
-    private static final int Z_TOP = 4, Z_CARDS = 5;
+    private static final int Z_TOP = 4, Z_CARDS = 5, Z_XBOX = 6;
 
     private final Activity activity;
     private final Scene scene = new Scene();
@@ -297,6 +299,7 @@ final class HomeView extends ViewGroup implements Choreographer.FrameCallback, H
             if (!running) return;
             data.refreshIfStale();
             recs.refreshIfStale();
+            if(xboxPanel!=null)xboxPanel.refreshIfStale();
             checkNotices();
             updatePalette();
             checkNight(true);
@@ -329,12 +332,14 @@ final class HomeView extends ViewGroup implements Choreographer.FrameCallback, H
         sheetLayer = new Layer(a, SHEET);
         toastLayer = new Layer(a, TOAST);
         launchBadge=skin==Skin.GTA_VI?new LaunchCountdownView(a,fonts):null;
+        xboxPanel=skin==Skin.GTA_VI?new XboxHeaderView(a,fonts):null;
         // Hardware layers on the GPU: only the one that changed is redrawn; moving, fading and scaling stay cheap.
         for (View v : new View[] {heroLayer, status, platter, tiles, drawerLayer, sheetLayer}) v.setLayerType(LAYER_TYPE_HARDWARE, null);
         for (View v : new View[] {sky, heroLayer, status, platter, tiles, drawerLayer, sheetLayer, toastLayer}) {
             v.setImportantForAccessibility(IMPORTANT_FOR_ACCESSIBILITY_NO);   // TalkBack reads the items (Spoken)
             addView(v);
         }
+        if(xboxPanel!=null)addView(xboxPanel,2);
         if(launchBadge!=null)addView(launchBadge,2); // above the hero, below buttons/drawers/sheets
         setContentDescription("Free My TV");
         drawerLayer.setVisibility(INVISIBLE);
@@ -365,6 +370,7 @@ final class HomeView extends ViewGroup implements Choreographer.FrameCallback, H
         running = true;
         startGameWallpaper();
         if(launchBadge!=null)launchBadge.resume();
+        if(xboxPanel!=null)xboxPanel.resume();
         checkNight(false);
         resumedAt = SystemClock.uptimeMillis();
         lastNanos = 0;
@@ -394,6 +400,7 @@ final class HomeView extends ViewGroup implements Choreographer.FrameCallback, H
         handler.removeCallbacks(tick);
         stopGameWallpaper();
         if(launchBadge!=null)launchBadge.pause();
+        if(xboxPanel!=null)xboxPanel.pause();
         data.removeListener(this);
         recs.removeListener(this);
         if (tvInputs != null) tvInputs.unregisterCallback(inputCallback);
@@ -524,6 +531,7 @@ final class HomeView extends ViewGroup implements Choreographer.FrameCallback, H
         measure(sky, width, height);
         measure(heroLayer, width, Math.round(810 * kk));
         if(launchBadge!=null)measure(launchBadge,Math.round(560*kk),Math.round(92*kk));
+        if(xboxPanel!=null)measure(xboxPanel,Math.round(650*kk),Math.round(118*kk));
         measure(status, Math.round(1160 * kk), Math.round(240 * kk));
         // Sized to what they draw (the glass and its shadow; the grown tiles and their shadows): smaller layers are
         // cheaper for the GPU to composite on every frame of the drawer animation.
@@ -548,6 +556,7 @@ final class HomeView extends ViewGroup implements Choreographer.FrameCallback, H
             float titleWidth=lTitle==null?220*kk:lTitle.measureText("GTA VI");
             place(launchBadge,Math.round(MARGIN*kk+titleWidth+36*kk),Math.round(60*kk));
         }
+        if(xboxPanel!=null)place(xboxPanel,Math.round(Math.min(launchBadge.getRight()+24*kk,922*kk)),Math.round(38*kk));
         place(status, width - status.getMeasuredWidth(), 0);
         place(platter, 0, Math.round(750 * kk));
         place(tiles, 0, Math.round(790 * kk));
@@ -712,6 +721,7 @@ final class HomeView extends ViewGroup implements Choreographer.FrameCallback, H
         float lift = -d * shift;
         show(heroLayer, top, lift);
         if(launchBadge!=null)launchBadge.homeTransform(top,lift);
+        if(xboxPanel!=null)xboxPanel.homeTransform(top,lift);
         show(status, top, lift);
         show(platter, home, lift);
         show(tiles, home, lift);
@@ -1602,6 +1612,7 @@ final class HomeView extends ViewGroup implements Choreographer.FrameCallback, H
 
     /** Sets the springs' targets from the current focus (snap: no animation). */
     private void retarget(boolean snap) {
+        if(xboxPanel!=null)xboxPanel.panelFocus(!sheetOpen&&zone==Z_XBOX);
         // Only the group whose focus changed is redrawn (moving along the shelf doesn't redraw the hero or capsule).
         boolean tilesChanged = aim(tileFocus, !sheetOpen && zone == Z_SHELF ? shelfIndex : -1, snap);
         boolean statusChanged = aim(statusFocus, !sheetOpen && zone == Z_STATUS ? statusIndex : -1, snap);
@@ -2025,6 +2036,9 @@ final class HomeView extends ViewGroup implements Choreographer.FrameCallback, H
     private void activate() {
         HomeApps.Item it;
         RectF r;
+        if(!sheetOpen&&zone==Z_XBOX&&xboxPanel!=null){
+            click.open();activity.startActivity(new android.content.Intent(activity,XboxActivity.class));return;
+        }
         if (sheetOpen) {
             if (others.isEmpty()) return;
             it = others.get(gridIndex);
@@ -2100,6 +2114,7 @@ final class HomeView extends ViewGroup implements Choreographer.FrameCallback, H
             for (int i = 0; i < others.size(); i++) out.add(a11yId(GRID, i));
             return;
         }
+        if(xboxPanel!=null)out.add(a11yId(Z_XBOX,0));
         for (int i = 0; i < 3 + lightButtons.size(); i++) out.add(a11yId(Z_TOP, i));
         for (int i = 0; i < Math.min(CardGrid.LIMIT, cards.size()); i++) out.add(a11yId(Z_CARDS, i));
         for (int i = 0; i < shelf.size(); i++) out.add(a11yId(Z_SHELF, i));
@@ -2116,6 +2131,7 @@ final class HomeView extends ViewGroup implements Choreographer.FrameCallback, H
                 if (i >= 3) return label(lightButtons, i - 3);
                 return tabs()[i] + Ui.tr(", aba ", ", tab ") + (i + 1) + Ui.tr(" de 3", " of 3")
                         + (i == tab && cards.isEmpty() ? ". " + emptyTitle + ". " + emptyDetail : "");
+            case Z_XBOX: return xboxPanel==null?"":xboxPanel.description();
             case Z_CARDS: return i < cards.size() ? pickText(cards.get(i)) : "";
             case Z_SHELF: return label(shelf, i);
             case Z_DRAWER: return label(drawerItems, i);
@@ -2145,6 +2161,10 @@ final class HomeView extends ViewGroup implements Choreographer.FrameCallback, H
                 a11yRect.set(topRects[i]);
                 dy = (i < 3 ? heroLayer : status).getTranslationY();
                 break;
+            case Z_XBOX:
+                if(xboxPanel==null||i!=0)return false;
+                a11yRect.set(xboxPanel.getLeft(),xboxPanel.getTop(),xboxPanel.getRight(),xboxPanel.getBottom());
+                dy=xboxPanel.getTranslationY();break;
             case Z_CARDS:
                 if (i >= Math.min(CardGrid.LIMIT, cards.size())) return false;
                 a11yRect.set(cardRects[i]);
@@ -2174,6 +2194,7 @@ final class HomeView extends ViewGroup implements Choreographer.FrameCallback, H
     private int a11yFocused() {
         if (sheetOpen) return others.isEmpty() ? -1 : a11yId(GRID, gridIndex);
         switch (zone) {
+            case Z_XBOX: return xboxPanel==null?-1:a11yId(Z_XBOX,0);
             case Z_TOP: return a11yId(Z_TOP, topIndex);
             case Z_CARDS: return cardIndex < cards.size() ? a11yId(Z_CARDS, cardIndex) : -1;
             case Z_SHELF: return shelf.isEmpty() ? -1 : a11yId(Z_SHELF, shelfIndex);
@@ -2195,6 +2216,9 @@ final class HomeView extends ViewGroup implements Choreographer.FrameCallback, H
         }
         if (sheetOpen) return;
         switch (group) {
+            case Z_XBOX:
+                if(xboxPanel==null||i!=0)return;
+                if(drawerOpen)closeDrawer();xboxReturnTop=topIndex;break;
             case Z_DRAWER:
                 if (i >= drawerItems.size()) return;
                 if (!drawerOpen) openDrawer();
@@ -2554,6 +2578,10 @@ final class HomeView extends ViewGroup implements Choreographer.FrameCallback, H
 
     private boolean moveLight(int dx, int dy) {
         switch (zone) {
+            case Z_XBOX:
+                if(dy>0||dx!=0){zone=Z_TOP;topIndex=Math.max(0,Math.min(5,xboxReturnTop));}
+                else return true;
+                break;
             case Z_SHELF:
                 if (dy >= 0 || shelf.isEmpty()) return false;
                 if (cards.isEmpty()) { zone = Z_TOP; topIndex = tab; }
@@ -2596,7 +2624,8 @@ final class HomeView extends ViewGroup implements Choreographer.FrameCallback, H
                         zone = Z_CARDS;
                         cardIndex = nearestCard(topRects[topIndex].centerX());
                     }
-                } else return true;
+                } else if(dy<0&&xboxPanel!=null){xboxReturnTop=topIndex;zone=Z_XBOX;}
+                else return true;
                 break;
             default:
                 return false;

@@ -181,6 +181,7 @@ public final class PersonalizationActivity extends Activity {
     private void renderRoot() {
         button("apps", Ui.tr("Aplicativos da home", "Home apps") + "  ·  " + apps.size() + "/7", () -> show(APPS));
         button("favorites", Ui.tr("Canais do YouTube", "YouTube channels") + "  ·  " + favorites.size() + "/12", () -> show(FAVORITES));
+        button("xbox", Ui.tr("🎮 Xbox · jogos e estatísticas", "🎮 Xbox · games and stats"), () -> startActivity(new Intent(this,XboxActivity.class)));
         button("trailers", Ui.tr("Trailers de streaming", "Streaming trailers") + "  ·  " + trailers.size() + "/8", () -> show(TRAILERS));
         section(Ui.tr("Conteúdo da home", "Home content"));
         note(Ui.tr("Escolha uma fonte. A configuração do servidor é preservada ao alternar.", "Choose one source. Switching preserves the server configuration."));
