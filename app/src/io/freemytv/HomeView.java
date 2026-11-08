@@ -59,9 +59,12 @@ final class HomeView extends ViewGroup implements Choreographer.FrameCallback, H
     final Skin skin;
     private final Skin.Palette theme = new Skin.Palette();
     private final Ui.Fonts fonts;
-    private Bitmap gameWallpaper;
-    private boolean wallpaperAttempted, destroyed;
-    private int wallpaperGeneration;
+    private Bitmap gameWallpaper,gameWallpaperFrom;
+    private boolean destroyed;
+    private long gameWallpaperFadeAt;
+    private final HomeWallpaperCycle gameCycle=new HomeWallpaperCycle();
+    private final LaunchCountdownView launchBadge;
+    private final Runnable wallpaperTick=()->loadGameWallpaper();
     // Tile focus (Apple TV style): it grows from the center and its shadow drops (it "rises" toward the viewer).
     // Corner capsule.
     // Corner capsule: the height and top offset of the tvOS tab bar (68 and 46).
@@ -325,12 +328,14 @@ final class HomeView extends ViewGroup implements Choreographer.FrameCallback, H
         drawerLayer = new Layer(a, DRAWER);
         sheetLayer = new Layer(a, SHEET);
         toastLayer = new Layer(a, TOAST);
+        launchBadge=skin==Skin.GTA_VI?new LaunchCountdownView(a,fonts):null;
         // Hardware layers on the GPU: only the one that changed is redrawn; moving, fading and scaling stay cheap.
         for (View v : new View[] {heroLayer, status, platter, tiles, drawerLayer, sheetLayer}) v.setLayerType(LAYER_TYPE_HARDWARE, null);
         for (View v : new View[] {sky, heroLayer, status, platter, tiles, drawerLayer, sheetLayer, toastLayer}) {
             v.setImportantForAccessibility(IMPORTANT_FOR_ACCESSIBILITY_NO);   // TalkBack reads the items (Spoken)
             addView(v);
         }
+        if(launchBadge!=null)addView(launchBadge,2); // above the hero, below buttons/drawers/sheets
         setContentDescription("Free My TV");
         drawerLayer.setVisibility(INVISIBLE);
         for (int i = 0; i < 6; i++) {
@@ -358,7 +363,8 @@ final class HomeView extends ViewGroup implements Choreographer.FrameCallback, H
     void resume() {
         if (running) return;
         running = true;
-        loadGameWallpaper();
+        startGameWallpaper();
+        if(launchBadge!=null)launchBadge.resume();
         checkNight(false);
         resumedAt = SystemClock.uptimeMillis();
         lastNanos = 0;
@@ -386,6 +392,8 @@ final class HomeView extends ViewGroup implements Choreographer.FrameCallback, H
         running = false;
         Choreographer.getInstance().removeFrameCallback(this);
         handler.removeCallbacks(tick);
+        stopGameWallpaper();
+        if(launchBadge!=null)launchBadge.pause();
         data.removeListener(this);
         recs.removeListener(this);
         if (tvInputs != null) tvInputs.unregisterCallback(inputCallback);
@@ -394,32 +402,57 @@ final class HomeView extends ViewGroup implements Choreographer.FrameCallback, H
     void destroy() {
         pause();
         destroyed = true;
-        wallpaperGeneration++;
-        Bitmap gone = gameWallpaper;
-        gameWallpaper = null;
-        if (gone != null) handler.postDelayed(gone::recycle, 1000);
+        stopGameWallpaper();
+        Bitmap gone=gameWallpaper,old=gameWallpaperFrom;
+        gameWallpaper=null;gameWallpaperFrom=null;gameWallpaperFadeAt=0;
+        retireWallpaper(gone);retireWallpaper(old);
         click.release();
     }
 
+    private void startGameWallpaper(){
+        if(skin!=Skin.GTA_VI||!running||destroyed||sheetOpen)return;
+        gameCycle.resume(SystemClock.uptimeMillis());
+        loadGameWallpaper();
+    }
+    private void stopGameWallpaper(){gameCycle.pause();handler.removeCallbacks(wallpaperTick);}
+    private void scheduleGameWallpaper(){
+        handler.removeCallbacks(wallpaperTick);
+        long delay=gameCycle.delay(SystemClock.uptimeMillis());
+        if(running&&!destroyed&&!sheetOpen&&delay>=0)handler.postDelayed(wallpaperTick,delay);
+    }
     private void loadGameWallpaper() {
-        if (skin != Skin.GTA_VI || wallpaperAttempted || destroyed) return;
-        wallpaperAttempted = true;
-        final int gen = wallpaperGeneration;
-        final android.content.res.AssetManager assets = activity.getApplicationContext().getAssets();
-        LOADER.execute(() -> {
-            Bitmap loaded = null;
-            try { loaded = Wallpaper.home(assets); }
-            catch (Exception | OutOfMemoryError e) { AppLog.w("game wallpaper: " + e.getMessage()); }
-            final Bitmap ready = loaded;
-            handler.post(() -> {
-                if (destroyed || gen != wallpaperGeneration) {
-                    if (ready != null) ready.recycle();
-                    return;
+        if(skin!=Skin.GTA_VI||!running||destroyed||sheetOpen)return;
+        final HomeWallpaperCycle.Request request=gameCycle.request(SystemClock.uptimeMillis());
+        if(request==null){scheduleGameWallpaper();return;}
+        final android.content.res.AssetManager assets=activity.getApplicationContext().getAssets();
+        LOADER.execute(()->{
+            if(!gameCycle.current(request))return;
+            Bitmap loaded=null;
+            try{loaded=Wallpaper.home(assets,request.asset);}
+            catch(Exception|OutOfMemoryError e){AppLog.w("game wallpaper decode unavailable");}
+            final Bitmap ready=loaded;
+            handler.post(()->{
+                if(destroyed||!gameCycle.complete(request,ready!=null,SystemClock.uptimeMillis())){
+                    if(ready!=null)ready.recycle();return;
                 }
-                gameWallpaper = ready;
-                sky.invalidate();
+                if(ready!=null){
+                    retireWallpaper(gameWallpaperFrom);
+                    gameWallpaperFrom=gameWallpaper;gameWallpaper=ready;
+                    gameWallpaperFadeAt=gameWallpaperFrom==null?0:SystemClock.uptimeMillis();
+                    sky.invalidate();
+                }
+                scheduleGameWallpaper();
             });
         });
+    }
+    private void retireWallpaper(Bitmap image){if(image!=null)handler.postDelayed(image::recycle,1000);}
+    private boolean tickGameWallpaper(long now){
+        if(gameWallpaperFadeAt==0)return false;
+        if(now-gameWallpaperFadeAt>=FADE_MS){
+            gameWallpaperFadeAt=0;
+            Bitmap old=gameWallpaperFrom;gameWallpaperFrom=null;retireWallpaper(old);
+        }
+        return true;
     }
 
     /** Starting state (Home pressed while the home screen is showing): first app focused, drawer and sheet closed. */
@@ -428,6 +461,7 @@ final class HomeView extends ViewGroup implements Choreographer.FrameCallback, H
         shelfIndex = 0;
         cardIndex = 0;
         sheetOpen = false;
+        startGameWallpaper();
         drawerOpen = false;
         if (animated) {
             sheet.target = 0;
@@ -489,6 +523,7 @@ final class HomeView extends ViewGroup implements Choreographer.FrameCallback, H
         float kk = width / 1920f;
         measure(sky, width, height);
         measure(heroLayer, width, Math.round(810 * kk));
+        if(launchBadge!=null)measure(launchBadge,Math.round(560*kk),Math.round(92*kk));
         measure(status, Math.round(1160 * kk), Math.round(240 * kk));
         // Sized to what they draw (the glass and its shadow; the grown tiles and their shadows): smaller layers are
         // cheaper for the GPU to composite on every frame of the drawer animation.
@@ -509,6 +544,10 @@ final class HomeView extends ViewGroup implements Choreographer.FrameCallback, H
         float kk = width / 1920f;
         sky.layout(0, 0, width, height);
         place(heroLayer, 0, 0);
+        if(launchBadge!=null){
+            float titleWidth=lTitle==null?220*kk:lTitle.measureText("GTA VI");
+            place(launchBadge,Math.round(MARGIN*kk+titleWidth+36*kk),Math.round(60*kk));
+        }
         place(status, width - status.getMeasuredWidth(), 0);
         place(platter, 0, Math.round(750 * kk));
         place(tiles, 0, Math.round(790 * kk));
@@ -626,6 +665,7 @@ final class HomeView extends ViewGroup implements Choreographer.FrameCallback, H
         boolean toastFading = tickToast(up);
         boolean heroFading = tickHeroFade(up);
         boolean bgFading = tickBackgroundFade(up);
+        boolean gameFading=tickGameWallpaper(up);
         boolean nightMoving = tickNight(up);
 
         if (drawerMoving || sheetMoving || motionDirty) updateMotion();
@@ -638,7 +678,7 @@ final class HomeView extends ViewGroup implements Choreographer.FrameCallback, H
         if (heroMoving || heroDirty || heroFading || (skin.glass && bgFading)) heroLayer.invalidate();
         if (drawerItemsMoving || drawerDirty || bgFading) drawerLayer.invalidate();
         if (gridMoving || gridDirty || (skin.glass && bgFading)) sheetLayer.invalidate();
-        if (drawerMoving || bgFading) sky.invalidate();
+        if (drawerMoving || bgFading || gameFading) sky.invalidate();
         if (bgFading || (drawerWasMoving && !drawerMoving)) platter.invalidate();
         drawerWasMoving = drawerMoving;
         tilesDirty = statusDirty = heroDirty = drawerDirty = gridDirty = motionDirty = false;
@@ -671,6 +711,7 @@ final class HomeView extends ViewGroup implements Choreographer.FrameCallback, H
         float shift = SHIFT * k;
         float lift = -d * shift;
         show(heroLayer, top, lift);
+        if(launchBadge!=null)launchBadge.homeTransform(top,lift);
         show(status, top, lift);
         show(platter, home, lift);
         show(tiles, home, lift);
@@ -1605,6 +1646,7 @@ final class HomeView extends ViewGroup implements Choreographer.FrameCallback, H
 
     private void openSheet() {
         sheetOpen = true;
+        if(skin==Skin.GTA_VI)stopGameWallpaper();
         gridIndex = 0;
         scroll.snap(0);
         retargetGrid(true);
@@ -1615,6 +1657,7 @@ final class HomeView extends ViewGroup implements Choreographer.FrameCallback, H
 
     private void closeSheet() {
         sheetOpen = false;
+        startGameWallpaper();
         sheet.target = 0;
         retarget(false);
     }
@@ -2274,7 +2317,8 @@ final class HomeView extends ViewGroup implements Choreographer.FrameCallback, H
     private void drawLightSky(Canvas c) {
         if (skin == Skin.GTA_VI) {
             c.drawColor(theme.BACKGROUND);
-            if (gameWallpaper != null) drawImage(c, gameWallpaper, 1);
+            if(gameWallpaperFrom!=null)drawImage(c,gameWallpaperFrom,1);
+            if(gameWallpaper!=null)drawImage(c,gameWallpaper,gameWallpaperFadeAt==0?1:fadeEase(gameWallpaperFadeAt,SystemClock.uptimeMillis()));
             return;
         }
         if (!skin.glass) {

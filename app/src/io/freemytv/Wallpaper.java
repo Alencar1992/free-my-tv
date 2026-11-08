@@ -33,8 +33,10 @@ final class Wallpaper {
         }
     }
 
-    static Bitmap home(AssetManager assets) throws IOException {
-        Bitmap src = decode(assets, HOME, W, H), out = null;
+    static Bitmap home(AssetManager assets) throws IOException { return home(assets,HOME); }
+
+    static Bitmap home(AssetManager assets,String asset) throws IOException {
+        Bitmap src = decode(assets, asset, W, H), out = null;
         try {
             out = Bitmap.createBitmap(W, H, Bitmap.Config.ARGB_8888);
             Canvas c = new Canvas(out);
