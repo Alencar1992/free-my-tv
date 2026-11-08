@@ -47,6 +47,7 @@ final class DreamView extends View implements Choreographer.FrameCallback, HomeD
     private final float TITLE_W, DATE_BASE, CLOCK_TOP, CLOCK_SIZE;
     private static final float QUOTES_GAP = 52;
     private final Skin skin;
+    private final long showMs;
     private final Skin.Palette theme = new Skin.Palette();
     private final Ui.Fonts fonts;
     private static final double DRIFT_PERIOD_S = 600;
@@ -154,6 +155,7 @@ final class DreamView extends View implements Choreographer.FrameCallback, HomeD
     DreamView(Context c) {
         super(c);
         skin = SkinPreferences.load(c);
+        showMs = skin == Skin.GTA_VI ? 15_000 : SHOW_MS;
         fonts = Ui.fonts(c, skin);
         skin.apply(theme, 1);
         TITLE_W = skin.glass ? 1000 : 1100;
@@ -400,7 +402,7 @@ final class DreamView extends View implements Choreographer.FrameCallback, HomeD
         return s;
     }
 
-    /** The prepared photo goes on screen when its turn comes (the first one right away; the others every 30 s). */
+    /** The prepared photo goes on screen when its turn comes (the first one right away; the others at the skin’s interval). */
     private void advance(long up) {
         if (current == null) {
             if (prepared == null) return;
@@ -412,7 +414,7 @@ final class DreamView extends View implements Choreographer.FrameCallback, HomeD
             prepareNext();
             return;
         }
-        if (incoming == null && prepared != null && up >= current.startedAt + SHOW_MS) {
+        if (incoming == null && prepared != null && up >= current.startedAt + showMs) {
             incoming = prepared;
             prepared = null;
             incoming.startedAt = up;
@@ -448,7 +450,7 @@ final class DreamView extends View implements Choreographer.FrameCallback, HomeD
 
     /** The thumbnail stays fitted; its transition fades without cropping the edges. */
     private void place(Slide s, long up, float[] out) {
-        float u = Ui.clamp((up - s.startedAt) / (float) (SHOW_MS + FADE_MS));
+        float u = Ui.clamp((up - s.startedAt) / (float) (showMs + FADE_MS));
         float f = s.zoomIn ? u : 1 - u;
         float z = 1 + ZOOM * f;
         float rx = w * (z - 1) / 2, ry = h * (z - 1) / 2;
