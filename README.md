@@ -1,17 +1,19 @@
-# Downloads — Free My TV GTA VI1.7.0-gta.4
+# Downloads — Free My TV GTA VI 1.7.0-gta.5
 
-- [Baixar APK gta.4](https://github.com/Alencar1992/free-my-tv/raw/refs/heads/downloads/FreeMyTV-GTA-VI-1.7.0-gta.4.apk)
-- [Pacote completo: APK, fontes e instruções](https://github.com/Alencar1992/free-my-tv/raw/refs/heads/downloads/FreeMyTV-GTA-VI-1.7.0-gta.4-Pacote.zip)
-- [Atualização, instalação e retorno a Original](INSTRUCOES-INSTALACAO.md)
+- [Baixar APK gta.5](https://github.com/Alencar1992/free-my-tv/raw/refs/heads/downloads/FreeMyTV-GTA-VI-1.7.0-gta.5.apk)
+- [Pacote completo: APK, fontes e instruções](https://github.com/Alencar1992/free-my-tv/raw/refs/heads/downloads/FreeMyTV-GTA-VI-1.7.0-gta.5-Pacote.zip)
+- [Instalar/atualizar e voltar a Original](INSTRUCOES-INSTALACAO.md) · [Configurar Xbox](docs/xbox.md)
 - [Checksums](SHA256SUMS.txt) · [Certificado público](ASSINATURA.txt) · [Validação](VALIDACAO.md)
-- [Código da personalização](https://github.com/Alencar1992/free-my-tv/tree/gta-vi)
+- [Código](https://github.com/Alencar1992/free-my-tv/tree/gta-vi)
 
-Novidades: a home GTA VI alterna as11 fotos locais a cada15 segundos; ao lado do título, contador DD/HH/MM/SS até19/11/2026 às00:00 Brasília. Nesse dia mostra00/00/00/00 e **HOJE É O GRANDE DIA!**; em20/11 o bloco desaparece automaticamente. Sem servidor. Usa as fontes licenciadas já presentes na skin.
+Novo painel Xbox ao lado do contador: imagem/nome do jogo, 🏆 conquistas, ⏱️ tempo e 📊 progresso das conquistas. OK abre uma busca paginada no histórico com capas, seleção persistida e detalhes com emojis. Personalizar home → Xbox oferece conexão opcional usando sua chave pessoal OpenXBL, informada privadamente na TV e guardada criptografada. Não envie a chave por chat, GitHub ou ADB.
 
-Mantidos: neon/salto na seleção, editor de atalhos/ordem, canais públicos/trailers e descanso15s. OK em vídeos abre YouTube. Canais pessoais ficam na TV e fora dos arquivos públicos.
+O histórico não garante todas as licenças compradas; algumas estatísticas/títulos antigos podem ficar indisponíveis. Não há dados fictícios de GTA VI nem inferência de campanha pelo percentual de conquistas. O serviço externo deve fornecer os dados e pode aplicar limites próprios.
 
-**Mesma assinatura das gta.1/gta.2/gta.3:** atualizar com `adb install -r`, sem desinstalar ou limpar dados. Confira certificado antes de atualizar um app de outra origem. Para voltar ao Google TV: Free My TV → Início → Original, aguardar e conferir com Home.
+Mantidos:11 fotos locais da home/descanso a cada15s, contador até19/11/2026 Brasília (mensagem no dia19, oculto em20), neon/salto na seleção, edição de apps e vídeos públicos. Sem servidor próprio. O painel Xbox permanece após o contador sumir.
 
-Versão experimental Android12+. O usuário mostrou vídeos públicos funcionando após a gta.3; galeria da home e contador da gta.4 ainda precisam de teste na TCL. O agente não instalou nem alterou a TV. A data do contador é o alvo fornecido pelo usuário e depende de o relógio do aparelho estar correto.
+**Mesma assinatura das versões anteriores:** atualizar com `adb install -r`, sem desinstalar ou limpar dados. Confira certificado antes de atualizar um app de outra origem. Google TV original: Free My TV → Início → Original, aguardar e conferir com Home.
 
-Código original de Simba/simbasjungles e contribuidores; base visual/feed de ViktorKav. MIT preservada. Imagens/logo GTA VI: Rockstar Games/Take-Two, atribuições nos fontes; não são relicenciados como MIT, sem afiliação ou endosso. Chave privada e configurações pessoais não estão nos downloads. Versões anteriores mantidas como referência; não force downgrade para recuperar dados.
+Android12+, versão experimental. Usuário confirmou os recursos anteriores e testes OpenXBL no PC; a integração Xbox Android ainda precisa de teste de teclado/Keystore/capas/controle na TV. O agente não instalou nem alterou o aparelho.
+
+Simba/simbasjungles, contribuidores e ViktorKav creditados; MIT preservada. Fotos/logo GTA VI: Rockstar Games/Take-Two, atribuição separada, sem afiliação. Chave privada e configurações pessoais fora dos arquivos públicos. Versões anteriores mantidas; não force downgrade para recuperar dados.
